@@ -1,0 +1,30 @@
+{
+  "manifest_version": 2,
+  "name": "Random Tab Hopper",
+  "version": "1.2.0",
+  "description": "Cycle tabs randomly or in order with adjustable delay, jitter, and human-input stop.",
+  "permissions": ["tabs", "storage"],
+  "browser_action": {
+    "default_title": "Random Tab Hopper",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    }
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["human-listener.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  }
+}

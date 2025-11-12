@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Random Tab Hopper</title>
+  <style>
+    :root {
+      --bg: #121417;
+      --panel: #1b1f26;
+      --text: #e8ecf1;
+      --muted: #9aa6b2;
+      --accent: #5aa9ff;
+      --danger: #ff6b6b;
+      --warn: #ffb84d;
+      --ok: #35d07f;
+      --btn-gloss-top: rgba(255,255,255,0.18);
+      --btn-gloss-bot: rgba(255,255,255,0.06);
+    }
+    html, body { background: var(--bg); color: var(--text); }
+    body { font: 14px/1.45 system-ui, Segoe UI, Roboto, sans-serif; margin: 12px; width: 330px; }
+    .card { background: var(--panel); border-radius: 14px; padding: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.35); }
+    h3 { margin: 0 0 10px; font-weight: 600; letter-spacing: 0.2px; }
+
+    .row { display: grid; grid-template-columns: 1fr 130px; gap: 10px; margin: 8px 0; align-items: center; }
+    label { color: var(--muted); font-weight: 600; }
+    input[type="number"] { width: 100%; padding: 6px 8px; border-radius: 10px; border: 1px solid #2a313b; background: #11161b; color: var(--text); }
+    input[type="checkbox"] { transform: scale(1.1); }
+
+    .range-wrap { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+    input[type="range"] { width: 100%; }
+
+    .subgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .muted { color: var(--muted); font-size: 12px; }
+
+    .toolbar { display:flex; gap:8px; margin-top: 10px; }
+    .btn {
+      flex: 1;
+      padding: 9px 10px;
+      border: 1px solid #2b3340;
+      border-radius: 12px;
+      color: var(--text);
+      background: linear-gradient(180deg, var(--btn-gloss-top), var(--btn-gloss-bot)), linear-gradient(180deg, #2a3240, #1e2633);
+      cursor: pointer;
+      user-select: none;
+      transition: transform .06s ease, box-shadow .1s ease;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 12px rgba(0,0,0,0.35); }
+    .btn:active { transform: translateY(0); }
+    .btn-accent { border-color: #2d5f9e; background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0.06)), linear-gradient(180deg, #3a6fb2, #234a7c); }
+    .btn-warn { border-color: #a66a11; background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05)), linear-gradient(180deg, #e6a23c, #9b671b); }
+    .btn-ok { border-color: #147a46; background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05)), linear-gradient(180deg, #3ac082, #1f7a4f); }
+    .btn-danger { border-color: #8a2222; background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05)), linear-gradient(180deg, #e06565, #962d2d); }
+
+    .status { margin-top: 8px; font-weight: 600; }
+    .running { color: var(--ok); }
+    .paused  { color: var(--warn); }
+    .stopped { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3>Random Tab Hopper</h3>
+
+    <div class="row">
+      <label>Tab start</label>
+      <input id="tabStart" type="number" min="1" value="1" />
+    </div>
+    <div class="row">
+      <label>Tab end</label>
+      <input id="tabEnd" type="number" min="1" value="9" />
+    </div>
+
+    <div class="row">
+      <label>Seconds per tab</label>
+      <input id="seconds" type="number" min="0.1" step="0.1" value="5" />
+    </div>
+
+    <div class="row">
+      <label>Jitter (±%)</label>
+      <div class="range-wrap">
+        <input id="jitterRange" type="range" min="0" max="100" step="1" value="25" />
+        <span id="jitterValue" class="muted">25%</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Use min/max delay</label>
+      <div class="subgrid">
+        <input id="delayMin" type="number" min="0.1" step="0.1" value="4" placeholder="Min s" />
+        <input id="delayMax" type="number" min="0.1" step="0.1" value="8" placeholder="Max s" />
+      </div>
+    </div>
+    <div class="muted" style="margin-top:4px;">
+      If Min/Max are set (and Min &lt; Max), they override Seconds and Jitter.
+    </div>
+
+    <div class="row">
+      <label>Total minutes</label>
+      <input id="totalMinutes" type="number" min="0.1" step="0.1" value="3" />
+    </div>
+
+    <div class="row">
+      <label>Mode</label>
+      <button id="modeBtn" class="btn btn-accent">Random</button>
+    </div>
+
+    <div class="row">
+      <label>Stop on human input</label>
+      <input id="stopOnHuman" type="checkbox" checked />
+    </div>
+
+    <div class="toolbar">
+      <button id="startBtn" class="btn btn-ok">Start</button>
+      <button id="pauseResumeBtn" class="btn btn-warn">Pause</button>
+      <button id="stopBtn" class="btn btn-danger">Stop</button>
+    </div>
+
+    <div id="status" class="status stopped">Stopped</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
