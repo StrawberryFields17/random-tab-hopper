@@ -4,25 +4,43 @@ const els = {
   seconds: document.getElementById("seconds"),
   jitterRange: document.getElementById("jitterRange"),
   jitterValue: document.getElementById("jitterValue"),
-  delayMin: document.getElementById("delayMin"),
-  delayMax: document.getElementById("delayMax"),
+  useMinMaxBtn: document.getElementById("useMinMaxBtn"),
+  delayMinRange: document.getElementById("delayMinRange"),
+  delayMaxRange: document.getElementById("delayMaxRange"),
   totalMinutes: document.getElementById("totalMinutes"),
   modeBtn: document.getElementById("modeBtn"),
   stopOnHuman: document.getElementById("stopOnHuman"),
   startBtn: document.getElementById("startBtn"),
   pauseResumeBtn: document.getElementById("pauseResumeBtn"),
   stopBtn: document.getElementById("stopBtn"),
-  status: document.getElementById("status")
+  status: document.getElementById("status"),
 };
 
 let currentMode = "random";
+let useMinMax = false;
+
 function reflectMode() {
   els.modeBtn.textContent = currentMode === "random" ? "Random" : "Sequential";
 }
 
+function reflectUseMinMax() {
+  if (useMinMax) {
+    els.useMinMaxBtn.classList.add("toggle-on");
+    els.useMinMaxBtn.textContent = "ON";
+  } else {
+    els.useMinMaxBtn.classList.remove("toggle-on");
+    els.useMinMaxBtn.textContent = "OFF";
+  }
+}
+
 els.modeBtn.addEventListener("click", () => {
-  currentMode = (currentMode === "random") ? "sequential" : "random";
+  currentMode = currentMode === "random" ? "sequential" : "random";
   reflectMode();
+});
+
+els.useMinMaxBtn.addEventListener("click", () => {
+  useMinMax = !useMinMax;
+  reflectUseMinMax();
 });
 
 els.jitterRange.addEventListener("input", () => {
@@ -52,19 +70,15 @@ async function refreshState() {
       els.jitterRange.value = pct;
       els.jitterValue.textContent = `${pct}%`;
     }
-    if (lastParams.useOverride != null) {
-      // We don't need a separate checkbox; using non-empty min<max triggers override.
-    }
-    if (lastParams.delayMin != null) els.delayMin.value = lastParams.delayMin;
-    if (lastParams.delayMax != null) els.delayMax.value = lastParams.delayMax;
-    if (lastParams.mode === "random" || lastParams.mode === "sequential") {
-      currentMode = lastParams.mode;
-      reflectMode();
-    }
-    if (lastParams.stopOnHuman != null) els.stopOnHuman.checked = !!lastParams.stopOnHuman;
+    if (lastParams.delayMin != null) els.delayMinRange.value = lastParams.delayMin;
+    if (lastParams.delayMax != null) els.delayMaxRange.value = lastParams.delayMax;
+    if (lastParams.mode) { currentMode = lastParams.mode; reflectMode(); }
+    useMinMax = !!lastParams.useOverride;
+    reflectUseMinMax();
+    els.stopOnHuman.checked = !!lastParams.stopOnHuman;
   } else {
     reflectMode();
-    els.jitterValue.textContent = `${els.jitterRange.value}%`;
+    reflectUseMinMax();
   }
 }
 
@@ -74,39 +88,19 @@ els.startBtn.addEventListener("click", async () => {
   const seconds = parseFloat(els.seconds.value);
   const totalMinutes = parseFloat(els.totalMinutes.value);
   const jitterPct = Math.max(0, Math.min(100, parseFloat(els.jitterRange.value))) / 100;
-
-  // Min/Max override detection
-  let delayMin = parseFloat(els.delayMin.value);
-  let delayMax = parseFloat(els.delayMax.value);
-  const hasMin = !Number.isNaN(delayMin);
-  const hasMax = !Number.isNaN(delayMax);
-  const useOverride = hasMin && hasMax && delayMin > 0 && delayMax > delayMin;
-
-  if ([tabStart, tabEnd, seconds, totalMinutes].some(Number.isNaN)) {
-    alert("Please provide valid numbers for range, seconds, and total minutes.");
-    return;
-  }
-  if (tabStart < 1 || tabEnd < tabStart) {
-    alert("Invalid tab range.");
-    return;
-  }
-  if (seconds <= 0 || totalMinutes <= 0) {
-    alert("Seconds and Total minutes must be > 0.");
-    return;
-  }
-  if (useOverride && delayMin <= 0) {
-    alert("Min delay must be > 0.");
-    return;
-  }
+  const delayMin = parseFloat(els.delayMinRange.value);
+  const delayMax = parseFloat(els.delayMaxRange.value);
 
   await browser.runtime.sendMessage({
     type: "START",
-    tabStart, tabEnd,
-    seconds, totalMinutes,
+    tabStart,
+    tabEnd,
+    seconds,
+    totalMinutes,
     jitterPct,
-    useOverride,
-    delayMin: useOverride ? delayMin : undefined,
-    delayMax: useOverride ? delayMax : undefined,
+    useOverride: useMinMax,
+    delayMin,
+    delayMax,
     mode: currentMode,
     stopOnHuman: !!els.stopOnHuman.checked
   });
