@@ -1,4 +1,4 @@
-// background.js — MV2
+// background.js — core logic for Random Tab Hopper
 
 let runState = {
   running: false,
@@ -13,18 +13,22 @@ let runState = {
   seconds: 5,
   totalMinutes: 1,
 
-  // timing variance (percentage, ±%)
+  // timing variance (percentage)
   jitterEnabled: false,
   jitterPct: 0.25, // 25% => 0.25
 
-  // custom variance range (seconds, around base)
+  // custom variance range (seconds around base)
   rangeEnabled: false,
-  rangeMin: 1, // seconds
-  rangeMax: 2, // seconds
+  rangeMin: 1.0,
+  rangeMax: 2.0,
+
+  // manual tab list mode
+  useSelectedTabs: false,
 
   // mode
   mode: "random", // "random" | "sequential"
   nextIndex1: null,
+  nextSeqPos: 0, // for sequential over candidateTabs
 
   // lifetime
   stopDeadline: null,
@@ -36,96 +40,164 @@ let runState = {
   _activatingByCode: false
 };
 
-// Listen for messages (from popup + content script)
-browser.runtime.onMessage.addListener(async (msg, sender) => {
-  if (msg?.type === "HUMAN_INPUT" && runState.running && runState.stopOnHuman) {
-    await stopRunner();
-    return { ok: true };
+// manual selection state
+let selectedTabIds = new Set();
+let selectionMode = false;
+
+// message handler for popup + (optionally) content scripts
+browser.runtime.onMessage.addListener((msg, sender) => {
+  if (!msg || typeof msg.type !== "string") return;
+
+  if (msg.type === "HUMAN_INPUT" && runState.running && runState.stopOnHuman) {
+    // optional external hook; tabs.onActivated already handles human stop
+    return stopRunner().then(() => ({ ok: true }));
   }
 
-  switch (msg?.type) {
-    case "START": {
-      await stopRunner();
-
-      runState.tabStart = Math.max(1, parseInt(msg.tabStart || 1, 10));
-      runState.tabEnd   = Math.max(runState.tabStart, parseInt(msg.tabEnd || runState.tabStart, 10));
-
-      runState.seconds      = Math.max(0.1, Number(msg.seconds || 5));
-      runState.totalMinutes = Math.max(0.1, Number(msg.totalMinutes || 1));
-
-      // timing variance (percentage)
-      runState.jitterEnabled = !!msg.jitterEnabled;
-      runState.jitterPct     = Math.max(0, Math.min(1, Number(msg.jitterPct ?? 0.0)));
-
-      // range variance (seconds around base)
-      runState.rangeEnabled = !!msg.rangeEnabled;
-      runState.rangeMin     = Math.max(0.1, Number(msg.rangeMin ?? 1));
-      runState.rangeMax     = Math.max(runState.rangeMin, Number(msg.rangeMax ?? runState.rangeMin));
-
-      // safeguard: if both accidentally true, prefer range
-      if (runState.rangeEnabled && runState.jitterEnabled) {
-        runState.jitterEnabled = false;
-      }
-
-      runState.mode        = (msg.mode === "sequential") ? "sequential" : "random";
-      runState.stopOnHuman = !!msg.stopOnHuman;
-      runState.nextIndex1  = null;
-
-      const win = await browser.windows.getCurrent();
-      runState.windowId = win.id;
-
-      await browser.storage.local.set({
-        lastParams: {
-          tabStart: runState.tabStart,
-          tabEnd: runState.tabEnd,
-          seconds: runState.seconds,
-          totalMinutes: runState.totalMinutes,
-          jitterEnabled: runState.jitterEnabled,
-          jitterPct: runState.jitterPct,
-          rangeEnabled: runState.rangeEnabled,
-          rangeMin: runState.rangeMin,
-          rangeMax: runState.rangeMax,
-          mode: runState.mode,
-          stopOnHuman: runState.stopOnHuman
-        }
-      });
-
-      startRunner();
-      return { ok: true };
-    }
+  switch (msg.type) {
+    case "START":
+      return handleStart(msg);
 
     case "STOP":
-      await stopRunner();
-      return { ok: true };
+      return stopRunner().then(() => ({ ok: true }));
 
     case "PAUSE":
-      await pauseRunner();
-      return { ok: true };
+      return pauseRunner().then(() => ({ ok: true }));
 
     case "RESUME":
-      await resumeRunner();
-      return { ok: true };
+      return resumeRunner().then(() => ({ ok: true }));
 
-    case "GET_STATE": {
-      const stored = await browser.storage.local.get("lastParams");
-      return {
-        running: runState.running,
-        paused: runState.paused,
-        lastParams: stored?.lastParams || null
-      };
-    }
+    case "GET_STATE":
+      return handleGetState();
+
+    case "START_SELECTION":
+      selectionMode = true;
+      selectedTabIds = new Set();
+      return Promise.resolve({ ok: true });
+
+    case "STOP_SELECTION":
+      selectionMode = false;
+      return handleStopSelection();
+
+    case "GET_SELECTED_TABS":
+      return handleGetSelectedTabs();
+
+    case "UNSELECT_TAB":
+      if (typeof msg.tabId === "number") {
+        selectedTabIds.delete(msg.tabId);
+      }
+      return handleGetSelectedTabs();
 
     default:
       return;
   }
 });
 
-// Stop on manual tab activation (if enabled)
+// Stop on manual tab activation (unless in selection mode)
 browser.tabs.onActivated.addListener(async (activeInfo) => {
+  if (selectionMode) {
+    selectedTabIds.add(activeInfo.tabId);
+    return;
+  }
+
   if (!runState.running || !runState.stopOnHuman) return;
   if (runState._activatingByCode) return;
   await stopRunner();
 });
+
+// ---- message helpers ----
+
+async function handleStart(msg) {
+  await stopRunner();
+
+  runState.tabStart = Math.max(1, parseInt(msg.tabStart || 1, 10));
+  runState.tabEnd = Math.max(runState.tabStart, parseInt(msg.tabEnd || runState.tabStart, 10));
+
+  runState.seconds = Math.max(0.1, Number(msg.seconds || 5));
+  runState.totalMinutes = Math.max(0.1, Number(msg.totalMinutes || 1));
+
+  runState.jitterEnabled = !!msg.jitterEnabled;
+  runState.jitterPct = Math.max(0, Math.min(1, Number(msg.jitterPct ?? 0)));
+
+  runState.rangeEnabled = !!msg.rangeEnabled;
+  runState.rangeMin = Math.max(0.1, Number(msg.rangeMin ?? 1.0));
+  runState.rangeMax = Math.max(runState.rangeMin, Number(msg.rangeMax ?? runState.rangeMin));
+
+  // if both are somehow true, prefer range mode
+  if (runState.rangeEnabled && runState.jitterEnabled) {
+    runState.jitterEnabled = false;
+  }
+
+  runState.useSelectedTabs = !!msg.useSelectedTabs;
+
+  runState.mode = (msg.mode === "sequential") ? "sequential" : "random";
+  runState.stopOnHuman = !!msg.stopOnHuman;
+  runState.nextIndex1 = null;
+  runState.nextSeqPos = 0;
+
+  const win = await browser.windows.getCurrent();
+  runState.windowId = win.id;
+
+  await browser.storage.local.set({
+    lastParams: {
+      tabStart: runState.tabStart,
+      tabEnd: runState.tabEnd,
+      seconds: runState.seconds,
+      totalMinutes: runState.totalMinutes,
+      jitterEnabled: runState.jitterEnabled,
+      jitterPct: runState.jitterPct,
+      rangeEnabled: runState.rangeEnabled,
+      rangeMin: runState.rangeMin,
+      rangeMax: runState.rangeMax,
+      useSelectedTabs: runState.useSelectedTabs,
+      mode: runState.mode,
+      stopOnHuman: runState.stopOnHuman
+    }
+  });
+
+  startRunner();
+  return { ok: true };
+}
+
+async function handleGetState() {
+  const stored = await browser.storage.local.get("lastParams");
+  return {
+    running: runState.running,
+    paused: runState.paused,
+    lastParams: stored?.lastParams || null
+  };
+}
+
+async function handleStopSelection() {
+  const tabsMeta = await getSelectedTabsMeta();
+  return {
+    ok: true,
+    count: tabsMeta.length,
+    tabs: tabsMeta
+  };
+}
+
+async function handleGetSelectedTabs() {
+  const tabsMeta = await getSelectedTabsMeta();
+  return {
+    tabs: tabsMeta
+  };
+}
+
+async function getSelectedTabsMeta() {
+  if (!selectedTabIds.size) return [];
+  const allTabs = await browser.tabs.query({});
+  const idSet = new Set(selectedTabIds);
+  return allTabs
+    .filter(t => idSet.has(t.id))
+    .map(t => ({
+      id: t.id,
+      title: t.title,
+      index1: t.index + 1,
+      windowId: t.windowId
+    }));
+}
+
+// ---- runner control ----
 
 function startRunner() {
   if (runState.running) return;
@@ -134,7 +206,6 @@ function startRunner() {
 
   runState.remainingMs = runState.totalMinutes * 60 * 1000;
   runState.stopDeadline = Date.now() + runState.remainingMs;
-
   scheduleNextHop(0);
 }
 
@@ -149,6 +220,7 @@ async function stopRunner() {
   runState.stopDeadline = null;
   runState.remainingMs = 0;
   runState.nextIndex1 = null;
+  runState.nextSeqPos = 0;
 }
 
 async function pauseRunner() {
@@ -168,6 +240,8 @@ async function resumeRunner() {
   scheduleNextHop(0);
 }
 
+// ---- timing helpers ----
+
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -179,7 +253,7 @@ function randFloat(min, max) {
 function computeDelayMs() {
   const base = runState.seconds;
 
-  // 1) Range variance (seconds) – around base, earlier OR later
+  // custom variance range (seconds) around base
   if (runState.rangeEnabled) {
     const minOffset = runState.rangeMin;
     const maxOffset = runState.rangeMax;
@@ -189,7 +263,7 @@ function computeDelayMs() {
     return seconds * 1000;
   }
 
-  // 2) Timing variance (percentage)
+  // timing variance (percentage)
   if (runState.jitterEnabled && runState.jitterPct > 0) {
     const p = runState.jitterPct;
     const low = Math.max(0.05, base * (1 - p));
@@ -198,7 +272,7 @@ function computeDelayMs() {
     return seconds * 1000;
   }
 
-  // 3) No variance
+  // no variance
   return base * 1000;
 }
 
@@ -225,32 +299,49 @@ function scheduleNextHop(delayMs) {
   }, delay);
 }
 
+// ---- hopping logic ----
+
 async function hopOnce() {
   try {
     if (!runState.running || runState.paused || runState.windowId == null) return;
 
-    const tabs = await browser.tabs.query({ windowId: runState.windowId });
-    if (!tabs.length) return;
+    const allTabs = await browser.tabs.query({ windowId: runState.windowId });
+    if (!allTabs.length) return;
 
-    tabs.sort((a, b) => a.index - b.index);
-    const maxIndex1 = tabs[tabs.length - 1].index + 1;
+    allTabs.sort((a, b) => a.index - b.index);
 
-    const start = Math.min(runState.tabStart, maxIndex1);
-    const end   = Math.min(runState.tabEnd,   maxIndex1);
-    if (end < start) return;
+    let candidateTabs;
 
-    let targetIndex1;
-    if (runState.mode === "sequential") {
-      if (runState.nextIndex1 == null || runState.nextIndex1 < start || runState.nextIndex1 > end) {
-        runState.nextIndex1 = start;
-      }
-      targetIndex1 = runState.nextIndex1;
-      runState.nextIndex1 = (targetIndex1 >= end) ? start : (targetIndex1 + 1);
+    if (runState.useSelectedTabs && selectedTabIds.size > 0) {
+      const idSet = new Set(selectedTabIds);
+      candidateTabs = allTabs.filter(t => idSet.has(t.id));
     } else {
-      targetIndex1 = randInt(start, end);
+      const maxIndex1 = allTabs[allTabs.length - 1].index + 1;
+      const start = Math.min(runState.tabStart, maxIndex1);
+      const end = Math.min(runState.tabEnd, maxIndex1);
+      if (end < start) return;
+
+      candidateTabs = allTabs.filter(t => {
+        const idx1 = t.index + 1;
+        return idx1 >= start && idx1 <= end;
+      });
     }
 
-    const targetTab = tabs.find(t => t.index === (targetIndex1 - 1));
+    if (!candidateTabs.length) return;
+
+    let targetTab;
+
+    if (runState.mode === "sequential") {
+      if (runState.nextSeqPos < 0 || runState.nextSeqPos >= candidateTabs.length) {
+        runState.nextSeqPos = 0;
+      }
+      targetTab = candidateTabs[runState.nextSeqPos];
+      runState.nextSeqPos = (runState.nextSeqPos + 1) % candidateTabs.length;
+    } else {
+      const idx = randInt(0, candidateTabs.length - 1);
+      targetTab = candidateTabs[idx];
+    }
+
     if (!targetTab) return;
 
     await browser.windows.update(runState.windowId, { focused: true });
@@ -261,7 +352,8 @@ async function hopOnce() {
     } finally {
       setTimeout(() => { runState._activatingByCode = false; }, 100);
     }
-  } catch {
+  } catch (e) {
     // ignore transient errors
+    console.error("hopOnce error:", e);
   }
 }

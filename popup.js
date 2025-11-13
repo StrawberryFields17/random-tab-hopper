@@ -15,6 +15,10 @@ const els = {
   maxLabel: document.getElementById("maxLabel"),
   trackFill: document.getElementById("trackFill"),
 
+  useListToggle: document.getElementById("useListToggle"),
+  chooseTabsBtn: document.getElementById("chooseTabsBtn"),
+  selectedTabsContainer: document.getElementById("selectedTabsContainer"),
+
   totalMinutes: document.getElementById("totalMinutes"),
   modeBtn: document.getElementById("modeBtn"),
   stopOnHuman: document.getElementById("stopOnHuman"),
@@ -28,6 +32,10 @@ const els = {
 let currentMode = "random";
 let jitterOn = false;
 let rangeOn = false;
+
+let useSelectedTabs = false;
+let selectingTabs = false;
+let cachedSelectedTabs = []; // {id, title, index1}
 
 function reflectMode() {
   els.modeBtn.textContent = currentMode === "random" ? "Random" : "Sequential";
@@ -45,10 +53,9 @@ function setJitter(on) {
   els.jitterToggle.textContent = jitterOn ? "ON" : "OFF";
   els.jitterToggle.setAttribute("aria-pressed", jitterOn ? "true" : "false");
 
-  // visual dimming only
   els.jitterRange.classList.toggle("slider-disabled", !jitterOn);
 
-  // keep modes mutually exclusive
+  // mutual exclusivity
   if (jitterOn && rangeOn) {
     setRange(false);
   }
@@ -61,27 +68,22 @@ function setRange(on) {
   els.rangeToggle.textContent = rangeOn ? "ON" : "OFF";
   els.rangeToggle.setAttribute("aria-pressed", rangeOn ? "true" : "false");
 
-  // visual dimming only, sliders always usable
   [els.minRange, els.maxRange].forEach(r => {
     r.classList.toggle("disabled", !rangeOn);
   });
 
-  // keep modes mutually exclusive
+  // mutual exclusivity
   if (rangeOn && jitterOn) {
     setJitter(false);
   }
 }
 
-// auto-enable jitter when moving its slider
-els.jitterRange.addEventListener("input", () => {
-  if (!jitterOn) {
-    setJitter(true);
-  }
-  updateJitterLabel();
-});
-
-// toggle jitter by button
-els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
+function setUseSelectedTabs(on) {
+  useSelectedTabs = !!on;
+  els.useListToggle.classList.toggle("on", useSelectedTabs);
+  els.useListToggle.textContent = useSelectedTabs ? "ON" : "OFF";
+  els.useListToggle.setAttribute("aria-pressed", useSelectedTabs ? "true" : "false");
+}
 
 function updateDualSlider(from) {
   const minR = els.minRange;
@@ -116,6 +118,17 @@ function updateDualSlider(from) {
   els.maxLabel.textContent = `${maxVal.toFixed(1)}s`;
 }
 
+// ---- variance sliders ----
+
+// auto-enable jitter when moving its slider
+els.jitterRange.addEventListener("input", () => {
+  if (!jitterOn) {
+    setJitter(true);
+  }
+  updateJitterLabel();
+});
+els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
+
 // auto-enable range when moving either handle
 ["input", "change"].forEach(ev => {
   els.minRange.addEventListener(ev, () => {
@@ -127,19 +140,81 @@ function updateDualSlider(from) {
     updateDualSlider("max");
   });
 });
-
-// manual range toggle
 els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
 
-// initial visuals
-updateDualSlider();
-updateJitterLabel();
-setJitter(false);
-setRange(false);
-reflectMode();
+// ---- manual tab list UI ----
+
+function renderSelectedTabs() {
+  if (!cachedSelectedTabs.length) {
+    els.selectedTabsContainer.textContent = "No tabs selected.";
+    return;
+  }
+  els.selectedTabsContainer.innerHTML = "";
+  cachedSelectedTabs.forEach(tab => {
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.alignItems = "center";
+    row.style.justifyContent = "space-between";
+    row.style.gap = "8px";
+    row.style.marginBottom = "2px";
+
+    const label = document.createElement("span");
+    label.textContent = `#${tab.index1} ${tab.title || "(no title)"}`;
+    label.style.flex = "1 1 auto";
+    label.style.whiteSpace = "nowrap";
+    label.style.overflow = "hidden";
+    label.style.textOverflow = "ellipsis";
+
+    const btn = document.createElement("button");
+    btn.textContent = "×";
+    btn.style.border = "none";
+    btn.style.borderRadius = "8px";
+    btn.style.padding = "0 6px";
+    btn.style.cursor = "pointer";
+    btn.style.background = "#3a3f4a";
+    btn.style.color = "#e8ecf1";
+    btn.dataset.tabId = String(tab.id);
+
+    row.appendChild(label);
+    row.appendChild(btn);
+    els.selectedTabsContainer.appendChild(row);
+  });
+}
+
+els.useListToggle.addEventListener("click", () => {
+  setUseSelectedTabs(!useSelectedTabs);
+});
+
+els.chooseTabsBtn.addEventListener("click", async () => {
+  if (!selectingTabs) {
+    selectingTabs = true;
+    els.chooseTabsBtn.textContent = "Done choosing";
+    await browser.runtime.sendMessage({ type: "START_SELECTION" });
+  } else {
+    selectingTabs = false;
+    els.chooseTabsBtn.textContent = "Choose tabs";
+    const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
+    cachedSelectedTabs = (res && res.tabs) || [];
+    renderSelectedTabs();
+  }
+});
+
+els.selectedTabsContainer.addEventListener("click", async (e) => {
+  const target = e.target;
+  if (!(target instanceof HTMLElement)) return;
+  const idStr = target.dataset.tabId;
+  if (!idStr) return;
+  const tabId = Number(idStr);
+  const res = await browser.runtime.sendMessage({ type: "UNSELECT_TAB", tabId });
+  cachedSelectedTabs = (res && res.tabs) || [];
+  renderSelectedTabs();
+});
+
+// ---- state sync with background ----
 
 async function refreshState() {
-  const { running, paused, lastParams } = await browser.runtime.sendMessage({ type: "GET_STATE" });
+  const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
+  const { running, paused, lastParams } = state || {};
 
   if (running) {
     els.status.textContent = paused ? "Paused" : "Running…";
@@ -167,7 +242,6 @@ async function refreshState() {
     if (lastParams.rangeMax != null) els.maxRange.value = lastParams.rangeMax;
     updateDualSlider();
 
-    // restore modes (still exclusive)
     const savedRangeOn = !!lastParams.rangeEnabled;
     const savedJitterOn = !!lastParams.jitterEnabled && !savedRangeOn;
     setRange(savedRangeOn);
@@ -181,8 +255,19 @@ async function refreshState() {
     if (lastParams.stopOnHuman != null) {
       els.stopOnHuman.checked = !!lastParams.stopOnHuman;
     }
+
+    if (lastParams.useSelectedTabs != null) {
+      setUseSelectedTabs(!!lastParams.useSelectedTabs);
+    }
   }
+
+  // pull current selected tab list
+  const res = await browser.runtime.sendMessage({ type: "GET_SELECTED_TABS" });
+  cachedSelectedTabs = (res && res.tabs) || [];
+  renderSelectedTabs();
 }
+
+// ---- controls ----
 
 els.modeBtn.addEventListener("click", () => {
   currentMode = currentMode === "random" ? "sequential" : "random";
@@ -216,6 +301,7 @@ els.startBtn.addEventListener("click", async () => {
     rangeEnabled: rangeOn,
     rangeMin,
     rangeMax,
+    useSelectedTabs,
     mode: currentMode,
     stopOnHuman: !!els.stopOnHuman.checked
   });
@@ -224,9 +310,9 @@ els.startBtn.addEventListener("click", async () => {
 });
 
 els.pauseResumeBtn.addEventListener("click", async () => {
-  const { running, paused } = await browser.runtime.sendMessage({ type: "GET_STATE" });
-  if (!running) return;
-  await browser.runtime.sendMessage({ type: paused ? "RESUME" : "PAUSE" });
+  const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
+  if (!state || !state.running) return;
+  await browser.runtime.sendMessage({ type: state.paused ? "RESUME" : "PAUSE" });
   await refreshState();
 });
 
@@ -235,4 +321,11 @@ els.stopBtn.addEventListener("click", async () => {
   await refreshState();
 });
 
+// init
+updateDualSlider();
+updateJitterLabel();
+setJitter(false);
+setRange(false);
+setUseSelectedTabs(false);
+reflectMode();
 refreshState();

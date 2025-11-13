@@ -43,7 +43,7 @@
     .range-block{grid-column:1/-1;margin-top:6px}
     .range-wrap{
       position:relative;
-      height:40px;           /* give room for two lanes */
+      height:40px;
     }
     .track{
       position:absolute;
@@ -60,7 +60,6 @@
       z-index:2;
     }
 
-    /* base style for both sliders */
     .range{
       position:absolute;
       left:0;right:0;
@@ -69,14 +68,13 @@
       pointer-events:auto;
     }
 
-    /* separate vertical lanes so they don't overlap */
     .range.min-handle{
-      top:0;               /* upper lane */
+      top:0;
       height:20px;
       z-index:3;
     }
     .range.max-handle{
-      bottom:0;            /* lower lane */
+      bottom:0;
       height:20px;
       z-index:3;
     }
@@ -109,6 +107,7 @@
       <label>Tab end</label>
       <input id="tabEnd" type="number" min="1" value="9" />
     </div>
+
     <div class="row">
       <label>Seconds per tab</label>
       <input id="seconds" type="number" min="0.1" step="0.1" value="5" />
@@ -151,14 +150,31 @@
       <div class="muted">Randomly offsets the base time earlier or later within this range.</div>
     </div>
 
+    <!-- Manual tab list controls -->
+    <div class="row">
+      <label>Manual tab list</label>
+      <button id="useListToggle" class="toggle" aria-pressed="false">OFF</button>
+    </div>
+    <div class="row">
+      <span class="muted">Selection</span>
+      <button id="chooseTabsBtn" class="btn btn-accent" style="padding:5px 8px;">Choose tabs</button>
+    </div>
+    <div id="selectedTabsContainer"
+         class="muted"
+         style="max-height:120px;overflow-y:auto;margin-top:4px;font-size:12px;">
+      No tabs selected.
+    </div>
+
     <div class="row">
       <label>Total minutes</label>
       <input id="totalMinutes" type="number" min="0.1" step="0.1" value="3" />
     </div>
+
     <div class="row">
       <label>Mode</label>
       <button id="modeBtn" class="btn btn-accent">Random</button>
     </div>
+
     <div class="row">
       <label>Stop on human input</label>
       <input id="stopOnHuman" type="checkbox" checked />
