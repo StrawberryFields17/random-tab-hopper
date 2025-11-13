@@ -41,19 +41,46 @@
 
     /* Dual-handle slider visuals */
     .range-block{grid-column:1/-1;margin-top:6px}
-    .range-wrap{position:relative;height:32px}
+    .range-wrap{
+      position:relative;
+      height:40px;           /* give room for two lanes */
+    }
     .track{
-      position:absolute;left:6px;right:6px;top:14px;
-      height:6px;border-radius:6px;background:var(--track);z-index:1;
+      position:absolute;
+      left:6px;right:6px;top:17px;
+      height:6px;border-radius:6px;
+      background:var(--track);
+      z-index:1;
     }
     .track-fill{
-      position:absolute;height:6px;border-radius:6px;
-      background:var(--track-fill);z-index:2;
+      position:absolute;
+      top:17px;
+      height:6px;border-radius:6px;
+      background:var(--track-fill);
+      z-index:2;
     }
+
+    /* base style for both sliders */
     .range{
-      position:absolute;left:0;right:0;top:0;bottom:0;
-      appearance:none;background:transparent;pointer-events:auto;z-index:3;
+      position:absolute;
+      left:0;right:0;
+      appearance:none;
+      background:transparent;
+      pointer-events:auto;
     }
+
+    /* separate vertical lanes so they don't overlap */
+    .range.min-handle{
+      top:0;               /* upper lane */
+      height:20px;
+      z-index:3;
+    }
+    .range.max-handle{
+      bottom:0;            /* lower lane */
+      height:20px;
+      z-index:3;
+    }
+
     .range::-webkit-slider-thumb{
       appearance:none;width:14px;height:14px;border-radius:50%;background:var(--thumb);
       border:1px solid #000;box-shadow:0 0 0 3px rgba(0,0,0,.15)
@@ -65,12 +92,8 @@
     .range::-webkit-slider-runnable-track{background:transparent}
     .range::-moz-range-track{background:transparent}
     .range.disabled{filter:grayscale(1) brightness(.7)}
+
     .endcaps{display:flex;justify-content:space-between;margin-top:4px;font-size:12px;color:var(--muted)}
-
-    /* Staggered handles + z-index so both can be grabbed */
-    .min-handle { transform: translateY(-3px); z-index:4; }
-    .max-handle { transform: translateY(3px);  z-index:3; }
-
     .slider-disabled{filter:grayscale(1) brightness(.7)}
   </style>
 </head>
@@ -115,7 +138,6 @@
         <div class="track"></div>
         <div class="track-fill" id="trackFill" style="left:6%;right:86.7%"></div>
 
-        <!-- staggered handles -->
         <input id="minRange" class="range min-handle disabled" type="range"
                min="0.5" max="30" step="0.5" value="1.0">
         <input id="maxRange" class="range max-handle disabled" type="range"
