@@ -17,57 +17,64 @@
       color:var(--text);
     }
     body{
-      font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;
-      margin:12px;
-      width:360px;
+      font:13px/1.35 system-ui,Segoe UI,Roboto,sans-serif;
+      margin:8px;
+      width:340px;
     }
 
     .card{
       background:var(--panel);
-      border-radius:14px;
-      padding:12px;
-      box-shadow:0 6px 18px rgba(0,0,0,.35);
+      border-radius:12px;
+      padding:10px;
+      box-shadow:0 4px 14px rgba(0,0,0,.35);
     }
 
     h3{
-      margin:0 0 10px;
+      margin:0 0 8px;
       font-weight:600;
       letter-spacing:.2px;
+      font-size:14px;
     }
 
     .row{
       display:grid;
-      grid-template-columns:1fr 150px;
-      gap:10px;
-      margin:8px 0;
+      grid-template-columns:1fr 140px;
+      gap:8px;
+      margin:6px 0;
       align-items:center;
     }
 
     label{
       color:var(--muted);
       font-weight:600;
+      font-size:12px;
     }
 
     input[type=number]{
       width:100%;
-      padding:6px 8px;
-      border-radius:10px;
+      padding:4px 6px;
+      border-radius:8px;
       border:1px solid #2a313b;
       background:#11161b;
       color:var(--text);
+      font-size:12px;
     }
 
     input[type=range]{ width:100%; }
-    .muted{ color:var(--muted); font-size:12px; }
+    .muted{ color:var(--muted); font-size:11px; }
 
-    .toolbar{ display:flex; gap:8px; margin-top:10px; }
+    .toolbar{
+      display:flex;
+      gap:6px;
+      margin-top:8px;
+    }
 
     /* ---------- BUTTONS ---------- */
 
     .btn{
       flex:1;
-      padding:9px 10px;
-      border-radius:12px;
+      padding:7px 8px;
+      border-radius:10px;
       border:1px solid #2b3340;
       background:
         linear-gradient(180deg,var(--btn-gloss-top),var(--btn-gloss-bot)),
@@ -78,17 +85,17 @@
       transition:transform .06s ease, box-shadow .06s ease;
       box-shadow:
         inset 0 1px 0 rgba(255,255,255,.05),
-        0 2px 8px rgba(0,0,0,.3);
+        0 2px 6px rgba(0,0,0,.3);
+      font-size:12px;
     }
 
     .btn:hover{
       transform:translateY(-1px);
       box-shadow:
         inset 0 1px 0 rgba(255,255,255,.08),
-        0 4px 12px rgba(0,0,0,.35);
+        0 3px 8px rgba(0,0,0,.35);
     }
 
-    /* ---- Windows-95 Press Animation ---- */
     .btn:active{
       transform:translateY(1px);
       box-shadow:
@@ -97,7 +104,6 @@
       filter:brightness(0.85);
       border-color:#111;
     }
-    /* ------------------------------------ */
 
     .btn-accent{
       border-color:#2d5f9e;
@@ -117,12 +123,12 @@
     }
 
     .toggle{
-      padding:4px 10px;
-      border-radius:10px;
+      padding:3px 8px;
+      border-radius:9px;
       border:1px solid #2b3340;
       background:#1a1f29;
       color:var(--text);
-      font-size:12px;
+      font-size:11px;
       cursor:pointer;
     }
 
@@ -132,8 +138,9 @@
     }
 
     .status{
-      margin-top:8px;
+      margin-top:6px;
       font-weight:600;
+      font-size:12px;
     }
     .running{ color:var(--ok); }
     .paused{ color:var(--warn); }
@@ -146,28 +153,28 @@
 
     /* ---------- DUAL SLIDER ---------- */
 
-    .range-block{ grid-column:1/-1; margin-top:6px; }
+    .range-block{ grid-column:1/-1; margin-top:4px; }
 
     .range-wrap{
       position:relative;
-      height:40px;
+      height:34px;
     }
 
     .track{
       position:absolute;
       left:6px; right:6px;
-      top:17px;
-      height:6px;
-      border-radius:6px;
+      top:14px;
+      height:5px;
+      border-radius:5px;
       background:var(--track);
       z-index:1;
     }
 
     .track-fill{
       position:absolute;
-      top:17px;
-      height:6px;
-      border-radius:6px;
+      top:14px;
+      height:5px;
+      border-radius:5px;
       background:var(--track-fill);
       z-index:2;
     }
@@ -182,33 +189,33 @@
 
     .range.min-handle{
       top:0;
-      height:20px;
+      height:17px;
       z-index:3;
     }
 
     .range.max-handle{
       bottom:0;
-      height:20px;
+      height:17px;
       z-index:3;
     }
 
     .range::-webkit-slider-thumb{
       appearance:none;
-      width:14px;
-      height:14px;
+      width:12px;
+      height:12px;
       border-radius:50%;
       background:var(--thumb);
       border:1px solid #000;
-      box-shadow:0 0 0 3px rgba(0,0,0,.15);
+      box-shadow:0 0 0 2px rgba(0,0,0,.15);
     }
 
     .range::-moz-range-thumb{
-      width:14px;
-      height:14px;
+      width:12px;
+      height:12px;
       border-radius:50%;
       background:var(--thumb);
       border:1px solid #000;
-      box-shadow:0 0 0 3px rgba(0,0,0,.15);
+      box-shadow:0 0 0 2px rgba(0,0,0,.15);
     }
 
     .range::-webkit-slider-runnable-track,
@@ -223,8 +230,8 @@
     .endcaps{
       display:flex;
       justify-content:space-between;
-      margin-top:4px;
-      font-size:12px;
+      margin-top:2px;
+      font-size:11px;
       color:var(--muted);
     }
   </style>
@@ -249,7 +256,7 @@
       </div>
     </div>
 
-    <div class="row" style="margin-top:10px;">
+    <div class="row" style="margin-top:6px;">
       <label>Seconds per tab</label>
       <input id="seconds" type="number" min="0.1" step="0.1" value="5" />
     </div>
@@ -261,7 +268,7 @@
     </div>
     <div class="row">
       <span class="muted">Variance amount</span>
-      <div style="display:flex;gap:10px;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center">
         <input id="jitterRange" type="range" min="0" max="100" step="1" value="25" />
         <span id="jitterValue" class="muted">25%</span>
       </div>
@@ -296,21 +303,21 @@
     </div>
 
     <!-- MANUAL TAB LIST -->
-    <div id="manualSection" style="margin-top:6px;">
+    <div id="manualSection" style="margin-top:4px;">
       <div class="row">
         <label>Manual tab list</label>
         <button id="useListToggle" class="toggle" aria-pressed="false">OFF</button>
       </div>
       <div class="row">
         <span class="muted">Selection</span>
-        <button id="chooseTabsBtn" class="btn btn-accent" style="padding:5px 8px;">
+        <button id="chooseTabsBtn" class="btn btn-accent" style="padding:4px 6px;">
           Choose tabs
         </button>
       </div>
 
       <div id="selectedTabsContainer"
            class="muted"
-           style="max-height:120px;overflow-y:auto;margin-top:4px;font-size:12px;">
+           style="max-height:80px;overflow-y:auto;margin-top:3px;font-size:11px;">
         No tabs selected.
       </div>
 
@@ -319,7 +326,7 @@
       </div>
     </div>
 
-    <div class="row">
+    <div class="row" style="margin-top:4px;">
       <label>Total minutes</label>
       <input id="totalMinutes" type="number" min="0.1" step="0.1" value="3" />
     </div>
