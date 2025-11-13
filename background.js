@@ -1,36 +1,42 @@
 // background.js — MV2
+
 let runState = {
   running: false,
   paused: false,
   windowId: null,
 
-  // range
+  // tab range
   tabStart: 1,
   tabEnd: 1,
 
-  // timing
-  seconds: 5,          // base seconds
-  jitterPct: 0.25,     // 0..1 (from slider)
-  useOverride: false,  // if true, use delayMin/delayMax instead of seconds±jitter
-  delayMin: 4,         // seconds (override)
-  delayMax: 8,         // seconds (override)
+  // base timing
+  seconds: 5,
+  totalMinutes: 1,
+
+  // timing variance (percentage, ±%)
+  jitterEnabled: false,
+  jitterPct: 0.25, // 25% => 0.25
+
+  // custom variance range (seconds, around base)
+  rangeEnabled: false,
+  rangeMin: 1, // seconds
+  rangeMax: 2, // seconds
 
   // mode
-  mode: "random",      // "random" | "sequential"
+  mode: "random", // "random" | "sequential"
   nextIndex1: null,
 
-  // lifecycle
-  totalMinutes: 1,
-  stopDeadline: null,  // timestamp (ms)
+  // lifetime
+  stopDeadline: null,
   remainingMs: 0,
   nextTimeoutId: null,
 
-  // human input
+  // human input stop
   stopOnHuman: true,
-  _activatingByCode: false // internal flag to ignore our own tab activations
+  _activatingByCode: false
 };
 
-// Listen for user-input pings from content script
+// Listen for messages (from popup + content script)
 browser.runtime.onMessage.addListener(async (msg, sender) => {
   if (msg?.type === "HUMAN_INPUT" && runState.running && runState.stopOnHuman) {
     await stopRunner();
@@ -41,21 +47,29 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
     case "START": {
       await stopRunner();
 
-      runState.tabStart      = Math.max(1, parseInt(msg.tabStart || 1, 10));
-      runState.tabEnd        = Math.max(runState.tabStart, parseInt(msg.tabEnd || runState.tabStart, 10));
-      runState.seconds       = Math.max(0.1, Number(msg.seconds || 5));
-      runState.totalMinutes  = Math.max(0.1, Number(msg.totalMinutes || 1));
+      runState.tabStart = Math.max(1, parseInt(msg.tabStart || 1, 10));
+      runState.tabEnd   = Math.max(runState.tabStart, parseInt(msg.tabEnd || runState.tabStart, 10));
 
-      // jitter & overrides
-      runState.jitterPct     = Math.max(0, Math.min(1, Number(msg.jitterPct ?? 0.25)));
-      runState.useOverride   = !!msg.useOverride;
-      runState.delayMin      = Math.max(0.1, Number(msg.delayMin ?? 4));
-      runState.delayMax      = Math.max(runState.delayMin, Number(msg.delayMax ?? 8));
+      runState.seconds      = Math.max(0.1, Number(msg.seconds || 5));
+      runState.totalMinutes = Math.max(0.1, Number(msg.totalMinutes || 1));
 
-      // mode + behavior
-      runState.mode          = (msg.mode === "sequential") ? "sequential" : "random";
-      runState.stopOnHuman   = !!msg.stopOnHuman;
-      runState.nextIndex1    = null;
+      // timing variance (percentage)
+      runState.jitterEnabled = !!msg.jitterEnabled;
+      runState.jitterPct     = Math.max(0, Math.min(1, Number(msg.jitterPct ?? 0.0)));
+
+      // range variance (seconds around base)
+      runState.rangeEnabled = !!msg.rangeEnabled;
+      runState.rangeMin     = Math.max(0.1, Number(msg.rangeMin ?? 1));
+      runState.rangeMax     = Math.max(runState.rangeMin, Number(msg.rangeMax ?? runState.rangeMin));
+
+      // safeguard: if both accidentally true, prefer range
+      if (runState.rangeEnabled && runState.jitterEnabled) {
+        runState.jitterEnabled = false;
+      }
+
+      runState.mode        = (msg.mode === "sequential") ? "sequential" : "random";
+      runState.stopOnHuman = !!msg.stopOnHuman;
+      runState.nextIndex1  = null;
 
       const win = await browser.windows.getCurrent();
       runState.windowId = win.id;
@@ -66,10 +80,11 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
           tabEnd: runState.tabEnd,
           seconds: runState.seconds,
           totalMinutes: runState.totalMinutes,
+          jitterEnabled: runState.jitterEnabled,
           jitterPct: runState.jitterPct,
-          useOverride: runState.useOverride,
-          delayMin: runState.delayMin,
-          delayMax: runState.delayMax,
+          rangeEnabled: runState.rangeEnabled,
+          rangeMin: runState.rangeMin,
+          rangeMax: runState.rangeMax,
           mode: runState.mode,
           stopOnHuman: runState.stopOnHuman
         }
@@ -99,14 +114,16 @@ browser.runtime.onMessage.addListener(async (msg, sender) => {
         lastParams: stored?.lastParams || null
       };
     }
+
+    default:
+      return;
   }
 });
 
-// Also stop if user manually changes active tab (and toggle enabled).
+// Stop on manual tab activation (if enabled)
 browser.tabs.onActivated.addListener(async (activeInfo) => {
   if (!runState.running || !runState.stopOnHuman) return;
-  if (runState._activatingByCode) return; // ignore our own switch
-  // Any manual activation counts as human intervention
+  if (runState._activatingByCode) return;
   await stopRunner();
 });
 
@@ -151,18 +168,38 @@ async function resumeRunner() {
   scheduleNextHop(0);
 }
 
+function randInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randFloat(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
 function computeDelayMs() {
-  // If min/max override is enabled, use that exact range
-  if (runState.useOverride) {
-    const lowMs  = Math.max(50, runState.delayMin * 1000);
-    const highMs = Math.max(lowMs, runState.delayMax * 1000);
-    return randInt(lowMs, highMs);
+  const base = runState.seconds;
+
+  // 1) Range variance (seconds) – around base, earlier OR later
+  if (runState.rangeEnabled) {
+    const minOffset = runState.rangeMin;
+    const maxOffset = runState.rangeMax;
+    const mag = randFloat(minOffset, maxOffset);
+    const sign = Math.random() < 0.5 ? -1 : 1;
+    const seconds = Math.max(0.05, base + sign * mag);
+    return seconds * 1000;
   }
-  // Otherwise use base seconds ± jitter%
-  const base = runState.seconds * 1000;
-  const low  = Math.max(50, base * (1 - runState.jitterPct));
-  const high = Math.max(low, base * (1 + runState.jitterPct));
-  return randInt(Math.floor(low), Math.floor(high));
+
+  // 2) Timing variance (percentage)
+  if (runState.jitterEnabled && runState.jitterPct > 0) {
+    const p = runState.jitterPct;
+    const low = Math.max(0.05, base * (1 - p));
+    const high = base * (1 + p);
+    const seconds = randFloat(low, high);
+    return seconds * 1000;
+  }
+
+  // 3) No variance
+  return base * 1000;
 }
 
 function scheduleNextHop(delayMs) {
@@ -218,19 +255,13 @@ async function hopOnce() {
 
     await browser.windows.update(runState.windowId, { focused: true });
 
-    // mark that we're about to activate by code so onActivated doesn't stop us
     runState._activatingByCode = true;
     try {
       await browser.tabs.update(targetTab.id, { active: true });
     } finally {
-      // small timeout to ensure our own activation event passes
       setTimeout(() => { runState._activatingByCode = false; }, 100);
     }
   } catch {
     // ignore transient errors
   }
-}
-
-function randInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
 }

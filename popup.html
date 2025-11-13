@@ -14,11 +14,14 @@
     body{font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;margin:12px;width:360px}
     .card{background:var(--panel);border-radius:14px;padding:12px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
     h3{margin:0 0 10px;font-weight:600;letter-spacing:.2px}
+
     .row{display:grid;grid-template-columns:1fr 150px;gap:10px;margin:8px 0;align-items:center}
     label{color:var(--muted);font-weight:600}
     input[type=number]{width:100%;padding:6px 8px;border-radius:10px;border:1px solid #2a313b;background:#11161b;color:var(--text)}
+    input[type=range]{width:100%}
     .muted{color:var(--muted);font-size:12px}
     .toolbar{display:flex;gap:8px;margin-top:10px}
+
     .btn{flex:1;padding:9px 10px;border-radius:12px;border:1px solid #2b3340;
          background:linear-gradient(180deg,var(--btn-gloss-top),var(--btn-gloss-bot)),
                    linear-gradient(180deg,#2a3240,#1e2633);color:var(--text);cursor:pointer;
@@ -29,11 +32,14 @@
     .btn-ok{border-color:#147a46;background:linear-gradient(180deg,#3ac082,#1f7a4f)}
     .btn-warn{border-color:#a66a11;background:linear-gradient(180deg,#e6a23c,#9b671b)}
     .btn-danger{border-color:#8a2222;background:linear-gradient(180deg,#e06565,#962d2d)}
-    .toggle{padding:4px 10px;border-radius:10px;border:1px solid #2b3340;background:#1a1f29;color:var(--text);font-size:12px}
-    .toggle.on{background:#2b7030;border-color:#4c9b3e}
-    .status{margin-top:8px;font-weight:600}.running{color:var(--ok)}.paused{color:var(--warn)}.stopped{color:var(--danger)}
 
-    /* Dual-handle slider */
+    .toggle{padding:4px 10px;border-radius:10px;border:1px solid #2b3340;background:#1a1f29;color:var(--text);font-size:12px;cursor:pointer}
+    .toggle.on{background:#2b7030;border-color:#4c9b3e}
+
+    .status{margin-top:8px;font-weight:600}
+    .running{color:var(--ok)} .paused{color:var(--warn)} .stopped{color:var(--danger)}
+
+    /* Dual-handle slider visuals */
     .range-block{grid-column:1/-1;margin-top:6px}
     .range-wrap{position:relative;height:32px}
     .track{position:absolute;left:6px;right:6px;top:14px;height:6px;border-radius:6px;background:var(--track)}
@@ -44,48 +50,73 @@
     .range::-webkit-slider-runnable-track{background:transparent}
     .range::-moz-range-track{background:transparent}
     .range.disabled{filter:grayscale(1) brightness(.7)}
-    .endcaps{display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--muted)}
+    .endcaps{display:flex;justify-content:space-between;margin-top:4px;font-size:12px;color:var(--muted)}
+
+    .slider-disabled{filter:grayscale(1) brightness(.7)}
   </style>
 </head>
 <body>
   <div class="card">
     <h3>Random Tab Hopper</h3>
 
-    <div class="row"><label>Tab start</label><input id="tabStart" type="number" min="1" value="1" /></div>
-    <div class="row"><label>Tab end</label><input id="tabEnd" type="number" min="1" value="9" /></div>
-    <div class="row"><label>Seconds per tab</label><input id="seconds" type="number" min="0.1" step="0.1" value="5" /></div>
-
     <div class="row">
-      <label>Timing Variance (±%)</label>
+      <label>Tab start</label>
+      <input id="tabStart" type="number" min="1" value="1" />
+    </div>
+    <div class="row">
+      <label>Tab end</label>
+      <input id="tabEnd" type="number" min="1" value="9" />
+    </div>
+    <div class="row">
+      <label>Seconds per tab</label>
+      <input id="seconds" type="number" min="0.1" step="0.1" value="5" />
+    </div>
+
+    <!-- Timing variance (percentage) -->
+    <div class="row">
+      <label id="jitterLabel">Timing Variance (±0%)</label>
+      <button id="jitterToggle" class="toggle" aria-pressed="false">OFF</button>
+    </div>
+    <div class="row">
+      <span class="muted">Variance amount</span>
       <div style="display:flex;gap:10px;align-items:center">
         <input id="jitterRange" type="range" min="0" max="100" step="1" value="25" />
-        <span id="jitterValue" class="muted" aria-live="polite">25%</span>
+        <span id="jitterValue" class="muted">25%</span>
       </div>
+    </div>
+
+    <!-- Custom variance range (seconds around base) -->
+    <div class="row">
+      <label>Custom Variance Range (seconds)</label>
+      <button id="rangeToggle" class="toggle" aria-pressed="false">OFF</button>
+    </div>
+
+    <div class="range-block">
+      <div class="range-wrap" aria-label="Custom variance range in seconds">
+        <div class="track"></div>
+        <div class="track-fill" id="trackFill" style="left:6%;right:86.7%"></div>
+        <input id="minRange" class="range disabled" type="range" min="0.5" max="30" step="0.5" value="1.0" aria-label="Min offset seconds">
+        <input id="maxRange" class="range disabled" type="range" min="0.5" max="30" step="0.5" value="2.0" aria-label="Max offset seconds">
+      </div>
+      <div class="endcaps">
+        <span>Min: <span id="minLabel">1.0s</span></span>
+        <span>Max: <span id="maxLabel">2.0s</span></span>
+      </div>
+      <div class="muted">Randomly offsets the base time earlier or later within this range.</div>
     </div>
 
     <div class="row">
-      <label>Use Min/Max (seconds)</label>
-      <button id="useMinMaxBtn" class="toggle" aria-pressed="false">OFF</button>
+      <label>Total minutes</label>
+      <input id="totalMinutes" type="number" min="0.1" step="0.1" value="3" />
     </div>
-
-    <!-- Single dual-handle slider (two inputs on one track) -->
-    <div class="range-block">
-      <div class="range-wrap" aria-label="Min/Max Delay range, in seconds">
-        <div class="track"></div>
-        <div class="track-fill" id="trackFill" style="left:6.0%;right:86.7%"></div>
-        <input id="minRange" class="range disabled" type="range" min="1" max="60" step="0.5" value="4" aria-label="Min seconds">
-        <input id="maxRange" class="range disabled" type="range" min="1" max="60" step="0.5" value="8" aria-label="Max seconds">
-      </div>
-      <div class="endcaps">
-        <span>Min: <span id="minLabel">4.0s</span></span>
-        <span>Max: <span id="maxLabel">8.0s</span></span>
-      </div>
-      <div class="muted">When ON, overrides Seconds + Timing Variance.</div>
+    <div class="row">
+      <label>Mode</label>
+      <button id="modeBtn" class="btn btn-accent">Random</button>
     </div>
-
-    <div class="row"><label>Total minutes</label><input id="totalMinutes" type="number" min="0.1" step="0.1" value="3" /></div>
-    <div class="row"><label>Mode</label><button id="modeBtn" class="btn btn-accent">Random</button></div>
-    <div class="row"><label>Stop on human input</label><input id="stopOnHuman" type="checkbox" checked /></div>
+    <div class="row">
+      <label>Stop on human input</label>
+      <input id="stopOnHuman" type="checkbox" checked />
+    </div>
 
     <div class="toolbar">
       <button id="startBtn" class="btn btn-ok">Start</button>
