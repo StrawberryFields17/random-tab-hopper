@@ -44,12 +44,11 @@ let runState = {
 let selectedTabIds = new Set();
 let selectionMode = false;
 
-// message handler for popup + (optionally) content scripts
+// message handler
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || typeof msg.type !== "string") return;
 
   if (msg.type === "HUMAN_INPUT" && runState.running && runState.stopOnHuman) {
-    // optional external hook; tabs.onActivated already handles human stop
     return stopRunner().then(() => ({ ok: true }));
   }
 
@@ -92,7 +91,7 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   }
 });
 
-// Stop on manual tab activation (unless in selection mode)
+// Stop on manual tab activation (unless selecting tabs)
 browser.tabs.onActivated.addListener(async (activeInfo) => {
   if (selectionMode) {
     selectedTabIds.add(activeInfo.tabId);
@@ -178,9 +177,7 @@ async function handleStopSelection() {
 
 async function handleGetSelectedTabs() {
   const tabsMeta = await getSelectedTabsMeta();
-  return {
-    tabs: tabsMeta
-  };
+  return { tabs: tabsMeta };
 }
 
 async function getSelectedTabsMeta() {
@@ -353,7 +350,6 @@ async function hopOnce() {
       setTimeout(() => { runState._activatingByCode = false; }, 100);
     }
   } catch (e) {
-    // ignore transient errors
     console.error("hopOnce error:", e);
   }
 }
