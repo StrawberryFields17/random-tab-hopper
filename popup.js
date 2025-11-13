@@ -45,7 +45,7 @@ function setJitter(on) {
   els.jitterToggle.textContent = jitterOn ? "ON" : "OFF";
   els.jitterToggle.setAttribute("aria-pressed", jitterOn ? "true" : "false");
 
-  // visual dimming
+  // visual dimming only
   els.jitterRange.classList.toggle("slider-disabled", !jitterOn);
 
   // keep modes mutually exclusive
@@ -61,9 +61,8 @@ function setRange(on) {
   els.rangeToggle.textContent = rangeOn ? "ON" : "OFF";
   els.rangeToggle.setAttribute("aria-pressed", rangeOn ? "true" : "false");
 
-  // actually enable/disable inputs
+  // visual dimming only, sliders always usable
   [els.minRange, els.maxRange].forEach(r => {
-    r.disabled = !rangeOn;
     r.classList.toggle("disabled", !rangeOn);
   });
 
@@ -81,6 +80,7 @@ els.jitterRange.addEventListener("input", () => {
   updateJitterLabel();
 });
 
+// toggle jitter by button
 els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
 
 function updateDualSlider(from) {
@@ -119,20 +119,19 @@ function updateDualSlider(from) {
 // auto-enable range when moving either handle
 ["input", "change"].forEach(ev => {
   els.minRange.addEventListener(ev, () => {
-    if (!rangeOn) {
-      setRange(true);
-    }
+    if (!rangeOn) setRange(true);
     updateDualSlider("min");
   });
   els.maxRange.addEventListener(ev, () => {
-    if (!rangeOn) {
-      setRange(true);
-    }
+    if (!rangeOn) setRange(true);
     updateDualSlider("max");
   });
 });
 
-// Initial visuals
+// manual range toggle
+els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
+
+// initial visuals
 updateDualSlider();
 updateJitterLabel();
 setJitter(false);
@@ -168,7 +167,7 @@ async function refreshState() {
     if (lastParams.rangeMax != null) els.maxRange.value = lastParams.rangeMax;
     updateDualSlider();
 
-    // restore modes (still mutually exclusive)
+    // restore modes (still exclusive)
     const savedRangeOn = !!lastParams.rangeEnabled;
     const savedJitterOn = !!lastParams.jitterEnabled && !savedRangeOn;
     setRange(savedRangeOn);
@@ -186,7 +185,7 @@ async function refreshState() {
 }
 
 els.modeBtn.addEventListener("click", () => {
-  currentMode = (currentMode === "random") ? "sequential" : "random";
+  currentMode = currentMode === "random" ? "sequential" : "random";
   reflectMode();
 });
 
@@ -227,12 +226,7 @@ els.startBtn.addEventListener("click", async () => {
 els.pauseResumeBtn.addEventListener("click", async () => {
   const { running, paused } = await browser.runtime.sendMessage({ type: "GET_STATE" });
   if (!running) return;
-  await browser.runtime.sendMessage({ type: "RESUME" });
-  if (paused) {
-    await browser.runtime.sendMessage({ type: "RESUME" });
-  } else {
-    await browser.runtime.sendMessage({ type: "PAUSE" });
-  }
+  await browser.runtime.sendMessage({ type: paused ? "RESUME" : "PAUSE" });
   await refreshState();
 });
 
