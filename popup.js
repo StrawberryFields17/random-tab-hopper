@@ -38,10 +38,11 @@ function setJitter(on) {
   els.jitterToggle.classList.toggle("on", jitterOn);
   els.jitterToggle.textContent = jitterOn ? "ON" : "OFF";
   els.jitterToggle.setAttribute("aria-pressed", jitterOn ? "true" : "false");
-  els.jitterRange.disabled = !jitterOn;
+
+  // purely visual dimming when OFF
   els.jitterRange.classList.toggle("slider-disabled", !jitterOn);
 
-  // if jitter is turned on, turn range off
+  // if jitter is turned on, range must be off
   if (jitterOn && rangeOn) {
     setRange(false);
   }
@@ -54,12 +55,12 @@ function setRange(on) {
   els.rangeToggle.textContent = rangeOn ? "ON" : "OFF";
   els.rangeToggle.setAttribute("aria-pressed", rangeOn ? "true" : "false");
 
+  // visual dimming for both handles when OFF
   [els.minRange, els.maxRange].forEach(r => {
     r.classList.toggle("disabled", !rangeOn);
-    r.disabled = !rangeOn;
   });
 
-  // if range is turned on, turn jitter off
+  // if range is turned on, jitter must be off
   if (rangeOn && jitterOn) {
     setJitter(false);
   }
@@ -71,9 +72,15 @@ function updateJitterLabel() {
   els.jitterValue.textContent = `${pct}%`;
 }
 
-els.jitterRange.addEventListener("input", updateJitterLabel);
+// When the user moves the jitter slider, auto-enable jitter mode
+els.jitterRange.addEventListener("input", () => {
+  if (!jitterOn) {
+    setJitter(true);      // this will also turn range off if needed
+  }
+  updateJitterLabel();
+});
+
 els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
-els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
 
 function updateDualSlider(from) {
   const minR = els.minRange;
@@ -98,7 +105,7 @@ function updateDualSlider(from) {
   const lo = parseFloat(minR.min);
   const hi = parseFloat(minR.max);
 
-  const leftPct = ((minVal - lo) / (hi - lo)) * 100;
+  const leftPct  = ((minVal - lo) / (hi - lo)) * 100;
   const rightPct = 100 - ((maxVal - lo) / (hi - lo)) * 100;
 
   els.trackFill.style.left = `${leftPct}%`;
@@ -108,9 +115,20 @@ function updateDualSlider(from) {
   els.maxLabel.textContent = `${maxVal.toFixed(1)}s`;
 }
 
+// When the user moves either range handle, auto-enable range mode
 ["input", "change"].forEach(ev => {
-  els.minRange.addEventListener(ev, () => updateDualSlider("min"));
-  els.maxRange.addEventListener(ev, () => updateDualSlider("max"));
+  els.minRange.addEventListener(ev, () => {
+    if (!rangeOn) {
+      setRange(true);     // this will also turn jitter off if needed
+    }
+    updateDualSlider("min");
+  });
+  els.maxRange.addEventListener(ev, () => {
+    if (!rangeOn) {
+      setRange(true);
+    }
+    updateDualSlider("max");
+  });
 });
 
 // Initial visuals
@@ -149,7 +167,7 @@ async function refreshState() {
     if (lastParams.rangeMax != null) els.maxRange.value = lastParams.rangeMax;
     updateDualSlider();
 
-    // mutual exclusivity restored from saved state
+    // restore modes but keep them mutually exclusive
     const savedRangeOn = !!lastParams.rangeEnabled;
     const savedJitterOn = !!lastParams.jitterEnabled && !savedRangeOn;
     setRange(savedRangeOn);
