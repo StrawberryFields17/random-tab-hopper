@@ -235,14 +235,47 @@
       color:var(--muted);
     }
 
-    /* Choose-tabs specific styling */
+    /* ---------- MODE SLIDER ---------- */
+
+    .mode-switch{
+      display:flex;
+      justify-content:flex-end;
+    }
+
+    .mode-pill{
+      display:flex;
+      background:#0f1319;
+      border-radius:999px;
+      padding:2px;
+      border:1px solid #2b3340;
+      width:140px;
+    }
+
+    .mode-option{
+      flex:1;
+      border:none;
+      border-radius:999px;
+      background:transparent;
+      color:var(--muted);
+      font-size:11px;
+      padding:4px 0;
+      cursor:pointer;
+    }
+
+    .mode-option.active{
+      background:var(--accent);
+      color:#ffffff;
+      box-shadow:0 0 4px rgba(0,0,0,.6);
+    }
+
+    /* Choose tabs colour states */
     .btn-chooser-idle{
       border-color:#a66a11;
-      background:linear-gradient(180deg,#e6a23c,#9b671b); /* orange */
+      background:linear-gradient(180deg,#e6a23c,#9b671b);
     }
     .btn-chooser-active{
       border-color:#147a46;
-      background:linear-gradient(180deg,#3ac082,#1f7a4f); /* green */
+      background:linear-gradient(180deg,#3ac082,#1f7a4f);
     }
   </style>
 </head>
@@ -344,9 +377,15 @@
       <input id="totalMinutes" type="number" min="0.1" step="0.1" value="3" />
     </div>
 
+    <!-- MODE SLIDER -->
     <div class="row">
       <label>Mode</label>
-      <button id="modeBtn" class="btn btn-accent">Random</button>
+      <div class="mode-switch">
+        <div class="mode-pill" id="modeSwitch">
+          <button class="mode-option active" data-mode="random">Random</button>
+          <button class="mode-option" data-mode="sequential">Sequential</button>
+        </div>
+      </div>
     </div>
 
     <div class="row">
