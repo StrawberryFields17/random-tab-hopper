@@ -1,3 +1,4 @@
+// popup.js — UI logic (same as last version I sent you)
 const els = {
   rangeSection: document.getElementById("rangeSection"),
   manualSection: document.getElementById("manualSection"),
@@ -40,7 +41,7 @@ let rangeOn = false;
 
 let useSelectedTabs = false;
 let selectingTabs = false;
-let manualCount = 0; // number of tabs in manual list
+let manualCount = 0;
 
 function reflectMode() {
   els.modeBtn.textContent = currentMode === "random" ? "Random" : "Sequential";
@@ -60,7 +61,6 @@ function setJitter(on) {
 
   els.jitterRange.classList.toggle("slider-disabled", !jitterOn);
 
-  // mutual exclusivity with range
   if (jitterOn && rangeOn) {
     setRange(false);
   }
@@ -77,7 +77,6 @@ function setRange(on) {
     r.classList.toggle("disabled", !rangeOn);
   });
 
-  // mutual exclusivity with jitter
   if (rangeOn && jitterOn) {
     setJitter(false);
   }
@@ -104,20 +103,17 @@ function setUseSelectedTabs(on) {
   els.useListToggle.setAttribute("aria-pressed", useSelectedTabs ? "true" : "false");
 
   if (useSelectedTabs) {
-    // Manual list active -> tab range disabled
     els.rangeSection.classList.add("section-disabled");
     els.tabStart.disabled = true;
     els.tabEnd.disabled = true;
     els.rangeNote.textContent = "Using manual tab list (tab range disabled).";
   } else {
-    // Tab range active -> manual list not used for hopping
     els.rangeSection.classList.remove("section-disabled");
     els.tabStart.disabled = false;
     els.tabEnd.disabled = false;
     els.rangeNote.textContent = "Using tab range (manual tab list disabled).";
   }
 
-  // manualSection stays active so you can always edit/enable it again
   updateManualNote();
 }
 
@@ -166,12 +162,9 @@ function updateChooserButton() {
   }
 }
 
-// ---- variance sliders ----
-
+// variance sliders
 els.jitterRange.addEventListener("input", () => {
-  if (!jitterOn) {
-    setJitter(true);
-  }
+  if (!jitterOn) setJitter(true);
   updateJitterLabel();
 });
 els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
@@ -188,20 +181,17 @@ els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
 });
 els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
 
-// ---- manual tab list UI ----
-
+// manual tab list UI
 els.useListToggle.addEventListener("click", () => {
   setUseSelectedTabs(!useSelectedTabs);
 });
 
 els.chooseTabsBtn.addEventListener("click", async () => {
   if (!selectingTabs) {
-    // entering selection mode
     selectingTabs = true;
     updateChooserButton();
     await browser.runtime.sendMessage({ type: "START_SELECTION" });
   } else {
-    // leaving selection mode
     selectingTabs = false;
     updateChooserButton();
     const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
@@ -210,20 +200,17 @@ els.chooseTabsBtn.addEventListener("click", async () => {
   }
 });
 
-// Clear everything: manual selection + range marks + all green orbs
 els.clearMarkersBtn.addEventListener("click", async () => {
   await browser.runtime.sendMessage({ type: "CLEAR_ALL_MARKERS" });
   manualCount = 0;
   updateManualNote();
 });
 
-// ---- listen for background state changes (human stop, loop finished, etc.) ----
+// state sync / status
 browser.runtime.onMessage.addListener((msg) => {
   if (!msg || msg.type !== "STATE_CHANGED") return;
   refreshState();
 });
-
-// ---- state sync ----
 
 async function refreshState() {
   const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
@@ -278,15 +265,13 @@ async function refreshState() {
     setUseSelectedTabs(false);
   }
 
-  // get current selected tab count
   const res = await browser.runtime.sendMessage({ type: "GET_SELECTED_TABS" });
   const tabs = (res && res.tabs) || [];
   manualCount = tabs.length;
   updateManualNote();
 }
 
-// ---- controls ----
-
+// controls
 els.modeBtn.addEventListener("click", () => {
   currentMode = currentMode === "random" ? "sequential" : "random";
   reflectMode();

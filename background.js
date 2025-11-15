@@ -49,13 +49,17 @@ let rangeMarkedIds = new Set();
 async function markTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "MARK_TAB" });
-  } catch (e) {}
+  } catch (e) {
+    // may fail on about: pages, etc.
+  }
 }
 
 async function unmarkTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "UNMARK_TAB" });
-  } catch (e) {}
+  } catch (e) {
+    // ignore
+  }
 }
 
 async function clearRangeMarks() {
@@ -67,10 +71,15 @@ async function clearRangeMarks() {
   rangeMarkedIds.clear();
 }
 
+// NEW: truly clear ALL green orbs everywhere
 async function clearAllMarkers() {
-  const ids = new Set([...selectedTabIds, ...rangeMarkedIds]);
-  for (const id of ids) {
-    await unmarkTabVisual(id);
+  try {
+    const allTabs = await browser.tabs.query({});
+    for (const t of allTabs) {
+      await unmarkTabVisual(t.id);
+    }
+  } catch (e) {
+    // ignore; worst case some internal tabs keep default title
   }
   selectedTabIds.clear();
   rangeMarkedIds.clear();
@@ -132,17 +141,18 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
   const id = activeInfo.tabId;
 
   if (selectionMode) {
-    // In selection mode: clicking a tab toggles in manual list
+    // In selection mode: switching to a tab toggles its membership + orb
     if (selectedTabIds.has(id)) {
       selectedTabIds.delete(id);
-      unmarkTabVisual(id);
+      await unmarkTabVisual(id);
     } else {
       selectedTabIds.add(id);
-      markTabVisual(id);
+      await markTabVisual(id);
     }
     return;
   }
 
+  // Normal behavior: stop on human tab change if enabled
   if (!runState.running || !runState.stopOnHuman) return;
   if (runState._activatingByCode) return;
   await stopRunner();
@@ -153,8 +163,7 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
 async function handleStartSelection() {
   selectionMode = true;
 
-  // Also add the currently active tab to the selection once,
-  // so you can start selecting from the tab you’re on.
+  // Optional: auto-add current active tab to selection if not already present
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs && tabs.length) {
