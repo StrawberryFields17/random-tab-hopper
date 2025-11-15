@@ -44,6 +44,9 @@ let runState = {
 let selectedTabIds = new Set();
 let selectionMode = false;
 
+// range-marked tabs (for visual orbs when using range mode)
+let rangeMarkedIds = new Set();
+
 // ---- helpers for green marker on tab titles ----
 
 async function markTabVisual(tabId) {
@@ -60,6 +63,15 @@ async function unmarkTabVisual(tabId) {
   } catch (e) {
     // same as above
   }
+}
+
+async function clearRangeMarks() {
+  if (!rangeMarkedIds.size) return;
+  const ids = Array.from(rangeMarkedIds);
+  for (const id of ids) {
+    await unmarkTabVisual(id);
+  }
+  rangeMarkedIds.clear();
 }
 
 // ---- broadcast helper (popup status sync) ----
@@ -193,6 +205,29 @@ async function handleStart(msg) {
       stopOnHuman: runState.stopOnHuman
     }
   });
+
+  // Update green orbs for current mode:
+  // - manual: selectionMode clicking already marked them
+  // - range: mark all tabs in current range
+  await clearRangeMarks();
+  if (!runState.useSelectedTabs && runState.windowId != null) {
+    const allTabs = await browser.tabs.query({ windowId: runState.windowId });
+    if (allTabs.length) {
+      allTabs.sort((a, b) => a.index - b.index);
+      const maxIndex1 = allTabs[allTabs.length - 1].index + 1;
+      const start = Math.min(runState.tabStart, maxIndex1);
+      const end   = Math.min(runState.tabEnd,   maxIndex1);
+      if (end >= start) {
+        for (const t of allTabs) {
+          const idx1 = t.index + 1;
+          if (idx1 >= start && idx1 <= end) {
+            await markTabVisual(t.id);
+            rangeMarkedIds.add(t.id);
+          }
+        }
+      }
+    }
+  }
 
   startRunner();
   return { ok: true };

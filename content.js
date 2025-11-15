@@ -25,14 +25,12 @@ browser.runtime.onMessage.addListener((msg) => {
 
 // Detect Space key as human input, unless typing in a field
 document.addEventListener("keydown", (event) => {
-  // Only care about Space key
   if (!(event.code === "Space" || event.key === " ")) return;
 
   const target = event.target;
   const tag = target && target.tagName;
   const editable = target && (target.isContentEditable === true);
 
-  // ignore when typing in inputs / textareas / editable content
   if (editable || tag === "INPUT" || tag === "TEXTAREA") {
     return;
   }
@@ -40,6 +38,6 @@ document.addEventListener("keydown", (event) => {
   try {
     browser.runtime.sendMessage({ type: "SPACE_STOP" }).catch(() => {});
   } catch (e) {
-    // ignore if browser.* not available
+    // ignore
   }
 });

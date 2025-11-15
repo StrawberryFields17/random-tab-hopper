@@ -1,4 +1,9 @@
 const els = {
+  rangeSection: document.getElementById("rangeSection"),
+  manualSection: document.getElementById("manualSection"),
+  rangeNote: document.getElementById("rangeNote"),
+  manualNote: document.getElementById("manualNote"),
+
   tabStart: document.getElementById("tabStart"),
   tabEnd: document.getElementById("tabEnd"),
   seconds: document.getElementById("seconds"),
@@ -17,7 +22,6 @@ const els = {
 
   useListToggle: document.getElementById("useListToggle"),
   chooseTabsBtn: document.getElementById("chooseTabsBtn"),
-  selectedTabsContainer: document.getElementById("selectedTabsContainer"),
 
   totalMinutes: document.getElementById("totalMinutes"),
   modeBtn: document.getElementById("modeBtn"),
@@ -35,7 +39,7 @@ let rangeOn = false;
 
 let useSelectedTabs = false;
 let selectingTabs = false;
-let cachedSelectedTabs = []; // {id, title, index1}
+let manualCount = 0; // number of tabs in manual list
 
 function reflectMode() {
   els.modeBtn.textContent = currentMode === "random" ? "Random" : "Sequential";
@@ -46,11 +50,6 @@ function updateJitterLabel() {
   els.jitterLabel.textContent = `Timing Variance (±${pct}%)`;
   els.jitterValue.textContent = `${pct}%`;
 }
-// Listen for background state changes (human stop, loop finished, etc.)
-browser.runtime.onMessage.addListener((msg) => {
-  if (!msg || msg.type !== "STATE_CHANGED") return;
-  refreshState();
-});
 
 function setJitter(on) {
   jitterOn = !!on;
@@ -60,7 +59,7 @@ function setJitter(on) {
 
   els.jitterRange.classList.toggle("slider-disabled", !jitterOn);
 
-  // mutual exclusivity
+  // mutual exclusivity with range
   if (jitterOn && rangeOn) {
     setRange(false);
   }
@@ -77,9 +76,23 @@ function setRange(on) {
     r.classList.toggle("disabled", !rangeOn);
   });
 
-  // mutual exclusivity
+  // mutual exclusivity with jitter
   if (rangeOn && jitterOn) {
     setJitter(false);
+  }
+}
+
+function updateManualNote() {
+  if (useSelectedTabs) {
+    if (manualCount > 0) {
+      els.manualNote.textContent =
+        `Manual tab list active (${manualCount} tab${manualCount === 1 ? "" : "s"} selected).`;
+    } else {
+      els.manualNote.textContent =
+        "Manual tab list active, but no tabs selected yet.";
+    }
+  } else {
+    els.manualNote.textContent = "Manual tab list disabled (using tab range).";
   }
 }
 
@@ -88,6 +101,24 @@ function setUseSelectedTabs(on) {
   els.useListToggle.classList.toggle("on", useSelectedTabs);
   els.useListToggle.textContent = useSelectedTabs ? "ON" : "OFF";
   els.useListToggle.setAttribute("aria-pressed", useSelectedTabs ? "true" : "false");
+
+  if (useSelectedTabs) {
+    // Manual list active -> tab range disabled
+    els.rangeSection.classList.add("section-disabled");
+    els.manualSection.classList.remove("section-disabled");
+    els.tabStart.disabled = true;
+    els.tabEnd.disabled = true;
+    els.rangeNote.textContent = "Using manual tab list (tab range disabled).";
+  } else {
+    // Tab range active -> manual list effectively disabled
+    els.rangeSection.classList.remove("section-disabled");
+    els.manualSection.classList.add("section-disabled");
+    els.tabStart.disabled = false;
+    els.tabEnd.disabled = false;
+    els.rangeNote.textContent = "Using tab range (manual tab list disabled).";
+  }
+
+  updateManualNote();
 }
 
 function updateDualSlider(from) {
@@ -123,9 +154,20 @@ function updateDualSlider(from) {
   els.maxLabel.textContent = `${maxVal.toFixed(1)}s`;
 }
 
+function updateChooserButton() {
+  if (selectingTabs) {
+    els.chooseTabsBtn.textContent = "Choosing...";
+    els.chooseTabsBtn.classList.remove("chooser-inactive");
+    els.chooseTabsBtn.classList.add("chooser-active");
+  } else {
+    els.chooseTabsBtn.textContent = "Choose tabs";
+    els.chooseTabsBtn.classList.remove("chooser-active");
+    els.chooseTabsBtn.classList.add("chooser-inactive");
+  }
+}
+
 // ---- variance sliders ----
 
-// auto-enable jitter when moving its slider
 els.jitterRange.addEventListener("input", () => {
   if (!jitterOn) {
     setJitter(true);
@@ -134,7 +176,6 @@ els.jitterRange.addEventListener("input", () => {
 });
 els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
 
-// auto-enable range when moving either handle
 ["input", "change"].forEach(ev => {
   els.minRange.addEventListener(ev, () => {
     if (!rangeOn) setRange(true);
@@ -147,44 +188,7 @@ els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
 });
 els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
 
-// ---- manual tab list UI ----
-
-function renderSelectedTabs() {
-  if (!cachedSelectedTabs.length) {
-    els.selectedTabsContainer.textContent = "No tabs selected.";
-    return;
-  }
-  els.selectedTabsContainer.innerHTML = "";
-  cachedSelectedTabs.forEach(tab => {
-    const row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.alignItems = "center";
-    row.style.justifyContent = "space-between";
-    row.style.gap = "8px";
-    row.style.marginBottom = "2px";
-
-    const label = document.createElement("span");
-    label.textContent = `#${tab.index1} ${tab.title || "(no title)"}`;
-    label.style.flex = "1 1 auto";
-    label.style.whiteSpace = "nowrap";
-    label.style.overflow = "hidden";
-    label.style.textOverflow = "ellipsis";
-
-    const btn = document.createElement("button");
-    btn.textContent = "×";
-    btn.style.border = "none";
-    btn.style.borderRadius = "8px";
-    btn.style.padding = "0 6px";
-    btn.style.cursor = "pointer";
-    btn.style.background = "#3a3f4a";
-    btn.style.color = "#e8ecf1";
-    btn.dataset.tabId = String(tab.id);
-
-    row.appendChild(label);
-    row.appendChild(btn);
-    els.selectedTabsContainer.appendChild(row);
-  });
-}
+// ---- manual tab list UI (no list, just status) ----
 
 els.useListToggle.addEventListener("click", () => {
   setUseSelectedTabs(!useSelectedTabs);
@@ -193,29 +197,24 @@ els.useListToggle.addEventListener("click", () => {
 els.chooseTabsBtn.addEventListener("click", async () => {
   if (!selectingTabs) {
     selectingTabs = true;
-    els.chooseTabsBtn.textContent = "Done choosing";
+    updateChooserButton();
     await browser.runtime.sendMessage({ type: "START_SELECTION" });
   } else {
     selectingTabs = false;
-    els.chooseTabsBtn.textContent = "Choose tabs";
+    updateChooserButton();
     const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
-    cachedSelectedTabs = (res && res.tabs) || [];
-    renderSelectedTabs();
+    manualCount = (res && typeof res.count === "number") ? res.count : 0;
+    updateManualNote();
   }
 });
 
-els.selectedTabsContainer.addEventListener("click", async (e) => {
-  const target = e.target;
-  if (!(target instanceof HTMLElement)) return;
-  const idStr = target.dataset.tabId;
-  if (!idStr) return;
-  const tabId = Number(idStr);
-  const res = await browser.runtime.sendMessage({ type: "UNSELECT_TAB", tabId });
-  cachedSelectedTabs = (res && res.tabs) || [];
-  renderSelectedTabs();
+// ---- listen for background state changes (human stop, loop finished, etc.) ----
+browser.runtime.onMessage.addListener((msg) => {
+  if (!msg || msg.type !== "STATE_CHANGED") return;
+  refreshState();
 });
 
-// ---- state sync with background ----
+// ---- state sync ----
 
 async function refreshState() {
   const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
@@ -263,13 +262,18 @@ async function refreshState() {
 
     if (lastParams.useSelectedTabs != null) {
       setUseSelectedTabs(!!lastParams.useSelectedTabs);
+    } else {
+      setUseSelectedTabs(false);
     }
+  } else {
+    setUseSelectedTabs(false);
   }
 
-  // pull current selected tab list
+  // get current selected tab count
   const res = await browser.runtime.sendMessage({ type: "GET_SELECTED_TABS" });
-  cachedSelectedTabs = (res && res.tabs) || [];
-  renderSelectedTabs();
+  const tabs = (res && res.tabs) || [];
+  manualCount = tabs.length;
+  updateManualNote();
 }
 
 // ---- controls ----
@@ -332,5 +336,6 @@ updateJitterLabel();
 setJitter(false);
 setRange(false);
 setUseSelectedTabs(false);
+updateChooserButton();
 reflectMode();
 refreshState();
