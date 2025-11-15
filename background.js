@@ -35,10 +35,19 @@ let runState = {
 let selectedTabIds = new Set();
 let selectionMode = false;
 
+// ---- broadcast helper ----
+function broadcastStateChange() {
+  try {
+    browser.runtime.sendMessage({ type: "STATE_CHANGED" }).catch(() => {});
+  } catch (_) {
+    // ignore
+  }
+}
+
+// ---- message handler ----
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || typeof msg.type !== "string") return;
 
-  // Any human input message (spacebar or generic)
   if ((msg.type === "HUMAN_INPUT" || msg.type === "SPACE_STOP") &&
       runState.running && runState.stopOnHuman) {
     return stopRunner().then(() => ({ ok: true }));
@@ -190,6 +199,7 @@ function startRunner() {
 
   runState.remainingMs = runState.totalMinutes * 60 * 1000;
   runState.stopDeadline = Date.now() + runState.remainingMs;
+  broadcastStateChange();
   scheduleNextHop(0);
 }
 
@@ -205,6 +215,7 @@ async function stopRunner() {
   runState.remainingMs = 0;
   runState.nextIndex1 = null;
   runState.nextSeqPos = 0;
+  broadcastStateChange(); // <- updates popup when stopped (human or timeout)
 }
 
 async function pauseRunner() {
@@ -215,12 +226,14 @@ async function pauseRunner() {
     runState.nextTimeoutId = null;
   }
   runState.remainingMs = Math.max(0, runState.stopDeadline - Date.now());
+  broadcastStateChange();
 }
 
 async function resumeRunner() {
   if (!runState.running || !runState.paused) return;
   runState.paused = false;
   runState.stopDeadline = Date.now() + runState.remainingMs;
+  broadcastStateChange();
   scheduleNextHop(0);
 }
 
@@ -259,6 +272,7 @@ function scheduleNextHop(delayMs) {
 
   const remaining = Math.max(0, runState.stopDeadline - Date.now());
   if (remaining <= 0) {
+    // loop finished naturally
     stopRunner();
     return;
   }
@@ -270,6 +284,7 @@ function scheduleNextHop(delayMs) {
 
     const rem = Math.max(0, runState.stopDeadline - Date.now());
     if (rem <= 0) {
+      // finished after this hop
       stopRunner();
       return;
     }

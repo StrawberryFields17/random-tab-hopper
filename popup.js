@@ -46,6 +46,11 @@ function updateJitterLabel() {
   els.jitterLabel.textContent = `Timing Variance (±${pct}%)`;
   els.jitterValue.textContent = `${pct}%`;
 }
+// Listen for background state changes (human stop, loop finished, etc.)
+browser.runtime.onMessage.addListener((msg) => {
+  if (!msg || msg.type !== "STATE_CHANGED") return;
+  refreshState();
+});
 
 function setJitter(on) {
   jitterOn = !!on;
