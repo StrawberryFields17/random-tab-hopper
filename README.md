@@ -1,76 +1,197 @@
 # Random Tab Hopper
 
-Random Tab Hopper is a Firefox extension that automatically cycles through your open tabs.  
-You can use it to rotate pages while reading, keep different sites in view, or simply make browsing feel more dynamic.  
-Everything is adjustable, from timing to order to how “natural” the switching feels.
+Random Tab Hopper is a small Firefox extension that automatically cycles through your open tabs.
+
+You choose:
+
+- which tabs to include (by range or by manual selection),
+- how long to stay on each tab,
+- whether to hop in random order or sequentially, and
+- how much timing “wobble” there is between hops.
+
+It’s meant as a playful little utility for when you want tabs to move on their own for a while.
 
 ---
 
 ## Features
 
-- Switch tabs **randomly** or **in order**
-- Adjustable **seconds per tab**
-- Optional **Timing Variance (±%)** to add a natural delay wobble
-- **Min / Max delay** slider using a dual-handle range control  
-  - Disabled by default — turn it on to use a custom delay range
-- **Stop on human input** so the extension pauses automatically when you interact
-- Clean dark UI designed to blend into Firefox
+### 🧭 Two ways to choose which tabs are included
+
+You can decide which tabs the hopper uses in two different ways:
+
+#### 1. Tab range (by position)
+
+- Set **Tab start** and **Tab end** (1-based index, like the visible tab order in Firefox).
+- The extension will only hop between tabs in that range.
+- When you start the hopper in range mode, all included tabs are marked with a green dot (`🟢`) in their title so you can see at a glance which ones are in the pool.
+
+This is handy when you’ve grouped the tabs you care about together.
+
+#### 2. Manual tab list
+
+If you’d rather just pick the tabs yourself:
+
+- Toggle **Manual tab list** → **ON**.
+  - This disables the range for hopping (but keeps it visible in case you switch back later).
+- Click **Choose tabs**:
+  - The button turns green and shows **Choosing…**.
+  - Your **current tab is immediately added** to the list and gets a green dot (`🟢`) in its title.
+  - While in “Choosing…” mode, switching to any tab will:
+    - **First click on a tab** → add it to the list and mark it `🟢`.
+    - **Click another tab later** → toggle membership again when you come back to it:
+      - if it was selected, it will be removed and the green dot cleared,
+      - if it wasn’t, it will be added and marked.
+
+When you’re done picking:
+
+- Click **Choose tabs** again (now showing “Choosing…”):
+  - The button goes back to orange and says **Choose tabs** again.
+  - The manual selection is saved.
+  - The popup shows something like:  
+    `Manual tab list active (5 tabs selected).`
+
+> Note: Firefox doesn’t send an event when you click the *already active* tab again, so if you select the current tab by accident and want to unselect it, just switch to another tab and then back while “Choosing…” is active. That second activation will toggle it off.
+
+### 🟢 Green tab markers
+
+To keep track of what the hopper will touch, the extension uses a simple visual cue:
+
+- Any tab that’s part of the current **range** or **manual list** gets a green dot in its title:  
+  `🟢 Example Site – Mozilla Firefox`
+
+This is done by temporarily adjusting the page title. When a tab is removed from the selection (or cleared), the original title is restored.
+
+There’s also a **Clear** button that:
+
+- clears the manual tab list,
+- clears internal range tracking, **and**
+- sends a “remove green dot” message to **all open tabs** in all windows.
+
+If you have lingering green dots from older versions or previous sessions, pressing **Clear** once after installing this version will wipe them.
 
 ---
 
-## How it works
+## ⏱ Timing controls
 
-Choose the range of tabs you want to include, set the timing, and hit **Start**.  
-The extension will begin switching between those tabs until the total time runs out or you stop it.
+### Base delay
 
-If you enable **Timing Variance**, each hop gets a small random adjustment.  
-If you enable **Min/Max**, the extension ignores the fixed timing and picks a random delay between the two slider points instead.
+- **Seconds per tab**: how long to stay on each tab before hopping.
 
-You can pause or resume the cycle from the popup at any moment.
+### Total running time
 
----
+- **Total minutes**: how long the entire hopping session should last.
+  - When the time is up, the hopper automatically stops.
+  - The status at the bottom changes back to **Stopped**.
 
-## Installation
+### Timing variance (two modes, mutually exclusive)
 
-### Temporary for development/testing
-1. Open Firefox and visit:  
-   `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on…**
-3. Select `manifest.json` from this project.
+There are two ways to make the delay less “robotic”:
 
-> Temporary add-ons are removed when Firefox restarts.
+#### 1. Timing Variance (percentage)
 
-### Permanent installation (recommended)
-To install it like a normal extension:
+- **Timing Variance** toggle (ON/OFF).
+- **Variance amount** slider (0–100%).
+- If enabled, each hop delay is picked randomly within ±X% of your base delay.
+  - Example: base 5s, 25% → hops randomly between 3.75s and 6.25s.
 
-1. Zip the extension folder (include `manifest.json`, icons, and scripts).
-2. Go to the [Firefox Add-on Developer Hub](https://addons.mozilla.org/developers/).
-3. Upload it as an **Unlisted** add-on.
-4. Download the signed `.xpi` file.
-5. Install it by visiting  
-   `about:addons → ⚙️ → Install Add-on From File…`.
+#### 2. Custom Variance Range (seconds around base)
 
-This version stays installed even after restarts.
+- **Custom Variance Range** toggle (ON/OFF).
+- A dual slider with **Min** and **Max** in seconds.
+- If enabled, each hop delay is:
+  - base delay ± a random amount between Min and Max.
+  - Example: base 5s, Min 1s, Max 2s → a hop can be anywhere between 3–7 seconds.
 
----
+The two systems are **mutually exclusive**:
 
-## Controls
-
-| Setting | Description |
-|--------|-------------|
-| **Tab start / end** | Select the first and last tab index to include. |
-| **Seconds per tab** | Base delay between each hop. |
-| **Timing Variance (±%)** | Adds a random offset to the delay. |
-| **Use Min/Max (seconds)** | Overrides base delay and picks a random time within this range. |
-| **Total minutes** | Total duration before the extension stops automatically. |
-| **Mode** | Random or Sequential tab order. |
-| **Stop on human input** | Pauses hopping if you manually change tabs or interact. |
+- Turning on the **percentage** variance will automatically turn off the custom range.
+- Using the custom range will turn off the percentage variance.
+- Sliding one of them automatically enables that mode and disables the other.
 
 ---
 
-## Building from source
+## 🔁 Random vs Sequential mode
 
-Clone the repo:
-```bash
-git clone https://github.com/StrawberryFields17/random-tab-hopper.git
-cd random-tab-hopper
+- **Random**: each hop picks one of the allowed tabs at random.
+- **Sequential**: the hopper walks through the allowed tabs in order and loops back to the start.
+
+You can switch mode with the **Mode** button, which toggles between:
+
+- `Random`
+- `Sequential`
+
+The current mode is also stored, so it will be remembered the next time you open the popup.
+
+---
+
+## 🧍 Stop on human input
+
+There’s an option to let any obvious human interaction stop the hopper automatically:
+
+- **Stop on human input** (checkbox).
+
+When enabled:
+
+- Pressing **Space** on any page (while **not** typing in an input/textarea/content-editable field), or
+- Manually switching to another tab
+
+…will immediately stop the hopping. The status text at the bottom will switch to **Stopped** so you have a visual confirmation.
+
+If you want the hopper to keep running no matter what you do, just untick **Stop on human input**.
+
+---
+
+## ▶️ Controls
+
+At the bottom of the popup you have:
+
+- **Start**
+  - Validates your settings.
+  - Starts a new hopping run.
+  - Marks range tabs with green dots if you’re using the tab range.
+- **Pause / Resume**
+  - Toggles between pausing and resuming the current run.
+  - When paused, remaining time is preserved and resumes from there.
+- **Stop**
+  - Stops the current run immediately.
+  - Does not change your settings or selections.
+- **Clear**
+  - Clears all manual selections.
+  - Clears range tracking.
+  - Removes green dots from all tabs.
+
+Status text:
+
+- **Running…** (green)
+- **Paused** (amber)
+- **Stopped** (red)
+
+---
+
+## 🔌 How it works under the hood (short version)
+
+- A background script keeps track of the state:
+  - which window it’s working in,
+  - selected tab IDs,
+  - range start/end,
+  - timing settings,
+  - mode (random/sequential),
+  - whether to stop on human input.
+- A content script runs in each tab and listens for simple messages:
+  - `MARK_TAB` → add `🟢` to the title,
+  - `UNMARK_TAB` → restore the original title,
+  - keydown events for the Space bar (outside of text fields).
+- The popup is just a control panel:
+  - reads and writes settings via `browser.runtime.sendMessage`,
+  - updates its own UI based on the current state.
+
+---
+
+## 🧩 Installation (temporary, for development)
+
+1. Build / clone the repo somewhere on your machine.
+
+2. Open Firefox and go to:
+
+   ```text
+   about:debugging#/runtime/this-firefox
