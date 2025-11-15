@@ -5,50 +5,42 @@ let runState = {
   paused: false,
   windowId: null,
 
-  // tab range
   tabStart: 1,
   tabEnd: 1,
 
-  // base timing
   seconds: 5,
   totalMinutes: 1,
 
-  // timing variance (percentage)
   jitterEnabled: false,
-  jitterPct: 0.25, // 25% => 0.25
+  jitterPct: 0.25,
 
-  // custom variance range (seconds around base)
   rangeEnabled: false,
   rangeMin: 1.0,
   rangeMax: 2.0,
 
-  // manual tab list mode
   useSelectedTabs: false,
 
-  // mode
-  mode: "random", // "random" | "sequential"
+  mode: "random",
   nextIndex1: null,
-  nextSeqPos: 0, // for sequential over candidateTabs
+  nextSeqPos: 0,
 
-  // lifetime
   stopDeadline: null,
   remainingMs: 0,
   nextTimeoutId: null,
 
-  // human input stop
   stopOnHuman: true,
   _activatingByCode: false
 };
 
-// manual selection state
 let selectedTabIds = new Set();
 let selectionMode = false;
 
-// message handler
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || typeof msg.type !== "string") return;
 
-  if (msg.type === "HUMAN_INPUT" && runState.running && runState.stopOnHuman) {
+  // Any human input message (spacebar or generic)
+  if ((msg.type === "HUMAN_INPUT" || msg.type === "SPACE_STOP") &&
+      runState.running && runState.stopOnHuman) {
     return stopRunner().then(() => ({ ok: true }));
   }
 
@@ -91,7 +83,7 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   }
 });
 
-// Stop on manual tab activation (unless selecting tabs)
+// Stop on manual tab activation (clicking another tab), unless we're selecting
 browser.tabs.onActivated.addListener(async (activeInfo) => {
   if (selectionMode) {
     selectedTabIds.add(activeInfo.tabId);
@@ -121,7 +113,6 @@ async function handleStart(msg) {
   runState.rangeMin = Math.max(0.1, Number(msg.rangeMin ?? 1.0));
   runState.rangeMax = Math.max(runState.rangeMin, Number(msg.rangeMax ?? runState.rangeMin));
 
-  // if both are somehow true, prefer range mode
   if (runState.rangeEnabled && runState.jitterEnabled) {
     runState.jitterEnabled = false;
   }
@@ -168,11 +159,7 @@ async function handleGetState() {
 
 async function handleStopSelection() {
   const tabsMeta = await getSelectedTabsMeta();
-  return {
-    ok: true,
-    count: tabsMeta.length,
-    tabs: tabsMeta
-  };
+  return { ok: true, count: tabsMeta.length, tabs: tabsMeta };
 }
 
 async function handleGetSelectedTabs() {
@@ -242,7 +229,6 @@ async function resumeRunner() {
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-
 function randFloat(min, max) {
   return Math.random() * (max - min) + min;
 }
@@ -250,17 +236,13 @@ function randFloat(min, max) {
 function computeDelayMs() {
   const base = runState.seconds;
 
-  // custom variance range (seconds) around base
   if (runState.rangeEnabled) {
-    const minOffset = runState.rangeMin;
-    const maxOffset = runState.rangeMax;
-    const mag = randFloat(minOffset, maxOffset);
+    const mag = randFloat(runState.rangeMin, runState.rangeMax);
     const sign = Math.random() < 0.5 ? -1 : 1;
     const seconds = Math.max(0.05, base + sign * mag);
     return seconds * 1000;
   }
 
-  // timing variance (percentage)
   if (runState.jitterEnabled && runState.jitterPct > 0) {
     const p = runState.jitterPct;
     const low = Math.max(0.05, base * (1 - p));
@@ -269,7 +251,6 @@ function computeDelayMs() {
     return seconds * 1000;
   }
 
-  // no variance
   return base * 1000;
 }
 
@@ -308,14 +289,13 @@ async function hopOnce() {
     allTabs.sort((a, b) => a.index - b.index);
 
     let candidateTabs;
-
     if (runState.useSelectedTabs && selectedTabIds.size > 0) {
       const idSet = new Set(selectedTabIds);
       candidateTabs = allTabs.filter(t => idSet.has(t.id));
     } else {
       const maxIndex1 = allTabs[allTabs.length - 1].index + 1;
       const start = Math.min(runState.tabStart, maxIndex1);
-      const end = Math.min(runState.tabEnd, maxIndex1);
+      const end   = Math.min(runState.tabEnd,   maxIndex1);
       if (end < start) return;
 
       candidateTabs = allTabs.filter(t => {
@@ -327,7 +307,6 @@ async function hopOnce() {
     if (!candidateTabs.length) return;
 
     let targetTab;
-
     if (runState.mode === "sequential") {
       if (runState.nextSeqPos < 0 || runState.nextSeqPos >= candidateTabs.length) {
         runState.nextSeqPos = 0;
