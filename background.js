@@ -42,7 +42,7 @@ let runState = {
 
 let selectedTabIds = new Set();
 let selectionMode = false;
-let selectionOriginTabId = null;   // tab where choosing was started
+let selectionOriginTabId = null;   // kept for possible future use
 let rangeMarkedIds = new Set();
 
 // ---- helpers for green markers ----
@@ -180,14 +180,13 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
 async function handleStartSelection() {
   selectionMode = true;
 
-  // Remember where selection started
+  // Remember where selection started and auto-add current tab
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs && tabs.length) {
       const id = tabs[0].id;
       selectionOriginTabId = id;
 
-      // Also auto-add the current tab if not already selected
       if (!selectedTabIds.has(id)) {
         selectedTabIds.add(id);
         await markTabVisual(id);
@@ -324,6 +323,12 @@ async function stopRunner() {
     clearTimeout(runState.nextTimeoutId);
     runState.nextTimeoutId = null;
   }
+
+  // NEW: if we were using a range (not manual list), clear range orbs when stopping
+  if (!runState.useSelectedTabs) {
+    await clearRangeMarks();
+  }
+
   runState.running = false;
   runState.paused = false;
   runState.windowId = null;

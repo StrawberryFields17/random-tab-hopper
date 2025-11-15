@@ -284,29 +284,10 @@ async function refreshState() {
   manualCount = tabs.length;
   updateManualNote();
 
-  // Sync "Choosing…" state:
-  // if selection is active AND we're on the original tab → show Choosing…
-  // if selection is active but on a different tab → stop selection
+  // Sync "Choosing…" state with background
   const selState = await browser.runtime.sendMessage({ type: "GET_SELECTION_STATE" });
-  if (selState && selState.selecting) {
-    const currentTabs = await browser.tabs.query({ active: true, currentWindow: true });
-    const currentId = currentTabs && currentTabs.length ? currentTabs[0].id : null;
-
-    if (currentId === selState.originTabId) {
-      selectingTabs = true;
-      updateChooserButton();
-    } else {
-      // opened popup on a different tab: auto-stop choosing
-      const stopRes = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
-      manualCount = (stopRes && typeof stopRes.count === "number") ? stopRes.count : manualCount;
-      selectingTabs = false;
-      updateChooserButton();
-      updateManualNote();
-    }
-  } else {
-    selectingTabs = false;
-    updateChooserButton();
-  }
+  selectingTabs = !!(selState && selState.selecting);
+  updateChooserButton();
 }
 
 // ---- controls ----
