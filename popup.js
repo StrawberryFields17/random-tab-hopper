@@ -192,21 +192,29 @@ els.useListToggle.addEventListener("click", () => {
 els.chooseTabsBtn.addEventListener("click", async () => {
   if (!selectingTabs) {
     // entering selection mode:
-    // 1) make sure manual list is ON
+    // ALWAYS enable manual list visually & internally
     setUseSelectedTabs(true);
+
+    // also update the toggle button UI state immediately
+    els.useListToggle.classList.add("on");
+    els.useListToggle.textContent = "ON";
+    els.useListToggle.setAttribute("aria-pressed", "true");
 
     selectingTabs = true;
     updateChooserButton();
+
     await browser.runtime.sendMessage({ type: "START_SELECTION" });
   } else {
     // leaving selection mode manually
     selectingTabs = false;
     updateChooserButton();
+
     const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
     manualCount = (res && typeof res.count === "number") ? res.count : 0;
     updateManualNote();
   }
 });
+
 
 // Clear everything: manual selection + range marks + all green orbs
 els.clearMarkersBtn.addEventListener("click", async () => {
