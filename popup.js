@@ -1,4 +1,5 @@
-// popup.js — UI logic (same as last version I sent you)
+// popup.js — UI logic
+
 const els = {
   rangeSection: document.getElementById("rangeSection"),
   manualSection: document.getElementById("manualSection"),
@@ -162,7 +163,8 @@ function updateChooserButton() {
   }
 }
 
-// variance sliders
+// ---- variance sliders ----
+
 els.jitterRange.addEventListener("input", () => {
   if (!jitterOn) setJitter(true);
   updateJitterLabel();
@@ -181,17 +183,23 @@ els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
 });
 els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
 
-// manual tab list UI
+// ---- manual tab list UI ----
+
 els.useListToggle.addEventListener("click", () => {
   setUseSelectedTabs(!useSelectedTabs);
 });
 
 els.chooseTabsBtn.addEventListener("click", async () => {
   if (!selectingTabs) {
+    // entering selection mode:
+    // 1) make sure manual list is ON
+    setUseSelectedTabs(true);
+
     selectingTabs = true;
     updateChooserButton();
     await browser.runtime.sendMessage({ type: "START_SELECTION" });
   } else {
+    // leaving selection mode manually
     selectingTabs = false;
     updateChooserButton();
     const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
@@ -200,17 +208,22 @@ els.chooseTabsBtn.addEventListener("click", async () => {
   }
 });
 
+// Clear everything: manual selection + range marks + all green orbs
 els.clearMarkersBtn.addEventListener("click", async () => {
   await browser.runtime.sendMessage({ type: "CLEAR_ALL_MARKERS" });
   manualCount = 0;
+  selectingTabs = false;
+  updateChooserButton();
   updateManualNote();
 });
 
-// state sync / status
+// ---- listen for background state changes (human stop, loop finished, etc.) ----
 browser.runtime.onMessage.addListener((msg) => {
   if (!msg || msg.type !== "STATE_CHANGED") return;
   refreshState();
 });
+
+// ---- state sync ----
 
 async function refreshState() {
   const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
@@ -265,13 +278,39 @@ async function refreshState() {
     setUseSelectedTabs(false);
   }
 
+  // current manual selection count
   const res = await browser.runtime.sendMessage({ type: "GET_SELECTED_TABS" });
   const tabs = (res && res.tabs) || [];
   manualCount = tabs.length;
   updateManualNote();
+
+  // Sync "Choosing…" state:
+  // if selection is active AND we're on the original tab → show Choosing…
+  // if selection is active but on a different tab → stop selection
+  const selState = await browser.runtime.sendMessage({ type: "GET_SELECTION_STATE" });
+  if (selState && selState.selecting) {
+    const currentTabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const currentId = currentTabs && currentTabs.length ? currentTabs[0].id : null;
+
+    if (currentId === selState.originTabId) {
+      selectingTabs = true;
+      updateChooserButton();
+    } else {
+      // opened popup on a different tab: auto-stop choosing
+      const stopRes = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
+      manualCount = (stopRes && typeof stopRes.count === "number") ? stopRes.count : manualCount;
+      selectingTabs = false;
+      updateChooserButton();
+      updateManualNote();
+    }
+  } else {
+    selectingTabs = false;
+    updateChooserButton();
+  }
 }
 
-// controls
+// ---- controls ----
+
 els.modeBtn.addEventListener("click", () => {
   currentMode = currentMode === "random" ? "sequential" : "random";
   reflectMode();
@@ -308,6 +347,10 @@ els.startBtn.addEventListener("click", async () => {
     mode: currentMode,
     stopOnHuman: !!els.stopOnHuman.checked
   });
+
+  // Starting the script also ends "Choosing…" mode
+  selectingTabs = false;
+  updateChooserButton();
 
   await refreshState();
 });

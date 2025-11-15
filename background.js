@@ -42,6 +42,7 @@ let runState = {
 
 let selectedTabIds = new Set();
 let selectionMode = false;
+let selectionOriginTabId = null;   // tab where choosing was started
 let rangeMarkedIds = new Set();
 
 // ---- helpers for green markers ----
@@ -71,7 +72,7 @@ async function clearRangeMarks() {
   rangeMarkedIds.clear();
 }
 
-// NEW: truly clear ALL green orbs everywhere
+// Clear ALL markers on ALL tabs, regardless of age/version.
 async function clearAllMarkers() {
   try {
     const allTabs = await browser.tabs.query({});
@@ -83,6 +84,8 @@ async function clearAllMarkers() {
   }
   selectedTabIds.clear();
   rangeMarkedIds.clear();
+  selectionMode = false;
+  selectionOriginTabId = null;
 }
 
 function broadcastStateChange() {
@@ -104,22 +107,30 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   switch (msg.type) {
     case "START":
       return handleStart(msg);
+
     case "STOP":
       return stopRunner().then(() => ({ ok: true }));
+
     case "PAUSE":
       return pauseRunner().then(() => ({ ok: true }));
+
     case "RESUME":
       return resumeRunner().then(() => ({ ok: true }));
+
     case "GET_STATE":
       return handleGetState();
 
     case "START_SELECTION":
       return handleStartSelection();
+
     case "STOP_SELECTION":
       selectionMode = false;
+      selectionOriginTabId = null;
       return handleStopSelection();
+
     case "GET_SELECTED_TABS":
       return handleGetSelectedTabs();
+
     case "UNSELECT_TAB":
       if (typeof msg.tabId === "number") {
         selectedTabIds.delete(msg.tabId);
@@ -129,6 +140,12 @@ browser.runtime.onMessage.addListener((msg, sender) => {
 
     case "CLEAR_ALL_MARKERS":
       return clearAllMarkers().then(() => ({ ok: true }));
+
+    case "GET_SELECTION_STATE":
+      return Promise.resolve({
+        selecting: selectionMode,
+        originTabId: selectionOriginTabId
+      });
 
     default:
       return;
@@ -163,11 +180,14 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
 async function handleStartSelection() {
   selectionMode = true;
 
-  // Optional: auto-add current active tab to selection if not already present
+  // Remember where selection started
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs && tabs.length) {
       const id = tabs[0].id;
+      selectionOriginTabId = id;
+
+      // Also auto-add the current tab if not already selected
       if (!selectedTabIds.has(id)) {
         selectedTabIds.add(id);
         await markTabVisual(id);
@@ -179,6 +199,10 @@ async function handleStartSelection() {
 }
 
 async function handleStart(msg) {
+  // Starting a run always ends "Choosing…" mode
+  selectionMode = false;
+  selectionOriginTabId = null;
+
   await stopRunner();
 
   runState.tabStart = Math.max(1, parseInt(msg.tabStart || 1, 10));
