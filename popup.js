@@ -22,6 +22,7 @@ const els = {
 
   useListToggle: document.getElementById("useListToggle"),
   chooseTabsBtn: document.getElementById("chooseTabsBtn"),
+  clearMarkersBtn: document.getElementById("clearMarkersBtn"),
 
   totalMinutes: document.getElementById("totalMinutes"),
   modeBtn: document.getElementById("modeBtn"),
@@ -105,19 +106,18 @@ function setUseSelectedTabs(on) {
   if (useSelectedTabs) {
     // Manual list active -> tab range disabled
     els.rangeSection.classList.add("section-disabled");
-    els.manualSection.classList.remove("section-disabled");
     els.tabStart.disabled = true;
     els.tabEnd.disabled = true;
     els.rangeNote.textContent = "Using manual tab list (tab range disabled).";
   } else {
-    // Tab range active -> manual list effectively disabled
+    // Tab range active -> manual list not used for hopping
     els.rangeSection.classList.remove("section-disabled");
-    els.manualSection.classList.add("section-disabled");
     els.tabStart.disabled = false;
     els.tabEnd.disabled = false;
     els.rangeNote.textContent = "Using tab range (manual tab list disabled).";
   }
 
+  // manualSection stays active so you can always edit/enable it again
   updateManualNote();
 }
 
@@ -157,12 +157,12 @@ function updateDualSlider(from) {
 function updateChooserButton() {
   if (selectingTabs) {
     els.chooseTabsBtn.textContent = "Choosing...";
-    els.chooseTabsBtn.classList.remove("chooser-inactive");
-    els.chooseTabsBtn.classList.add("chooser-active");
+    els.chooseTabsBtn.classList.remove("btn-chooser-idle");
+    els.chooseTabsBtn.classList.add("btn-chooser-active");
   } else {
     els.chooseTabsBtn.textContent = "Choose tabs";
-    els.chooseTabsBtn.classList.remove("chooser-active");
-    els.chooseTabsBtn.classList.add("chooser-inactive");
+    els.chooseTabsBtn.classList.remove("btn-chooser-active");
+    els.chooseTabsBtn.classList.add("btn-chooser-idle");
   }
 }
 
@@ -188,7 +188,7 @@ els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
 });
 els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
 
-// ---- manual tab list UI (no list, just status) ----
+// ---- manual tab list UI ----
 
 els.useListToggle.addEventListener("click", () => {
   setUseSelectedTabs(!useSelectedTabs);
@@ -196,16 +196,25 @@ els.useListToggle.addEventListener("click", () => {
 
 els.chooseTabsBtn.addEventListener("click", async () => {
   if (!selectingTabs) {
+    // entering selection mode
     selectingTabs = true;
     updateChooserButton();
     await browser.runtime.sendMessage({ type: "START_SELECTION" });
   } else {
+    // leaving selection mode
     selectingTabs = false;
     updateChooserButton();
     const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
     manualCount = (res && typeof res.count === "number") ? res.count : 0;
     updateManualNote();
   }
+});
+
+// Clear everything: manual selection + range marks + all green orbs
+els.clearMarkersBtn.addEventListener("click", async () => {
+  await browser.runtime.sendMessage({ type: "CLEAR_ALL_MARKERS" });
+  manualCount = 0;
+  updateManualNote();
 });
 
 // ---- listen for background state changes (human stop, loop finished, etc.) ----

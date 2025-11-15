@@ -236,11 +236,13 @@
     }
 
     /* Choose-tabs specific styling */
-    .btn-chooser.chooser-inactive{
-      opacity:0.55;
+    .btn-chooser-idle{
+      border-color:#a66a11;
+      background:linear-gradient(180deg,#e6a23c,#9b671b); /* orange */
     }
-    .btn-chooser.chooser-active{
-      opacity:1;
+    .btn-chooser-active{
+      border-color:#147a46;
+      background:linear-gradient(180deg,#3ac082,#1f7a4f); /* green */
     }
   </style>
 </head>
@@ -310,7 +312,7 @@
       </div>
     </div>
 
-    <!-- MANUAL TAB LIST (no list, just status) -->
+    <!-- MANUAL TAB LIST -->
     <div id="manualSection" style="margin-top:4px;">
       <div class="row">
         <label>Manual tab list</label>
@@ -318,10 +320,18 @@
       </div>
       <div class="row">
         <span class="muted">Selection</span>
-        <button id="chooseTabsBtn"
-                class="btn btn-accent btn-chooser chooser-inactive">
-          Choose tabs
-        </button>
+        <div style="display:flex;gap:4px;justify-content:flex-end">
+          <button id="chooseTabsBtn"
+                  class="btn btn-chooser-idle"
+                  style="padding:4px 6px;flex:0 0 auto;">
+            Choose tabs
+          </button>
+          <button id="clearMarkersBtn"
+                  class="btn btn-danger"
+                  style="padding:4px 6px;flex:0 0 auto;">
+            Clear
+          </button>
+        </div>
       </div>
 
       <div class="muted" id="manualNote" style="margin-top:2px;">

@@ -3,7 +3,6 @@
 let originalTitle = document.title;
 let markedByHopper = false;
 
-// Listen for messages from background to mark/unmark this tab
 browser.runtime.onMessage.addListener((msg) => {
   if (!msg || typeof msg.type !== "string") return;
 
@@ -23,7 +22,6 @@ browser.runtime.onMessage.addListener((msg) => {
   }
 });
 
-// Detect Space key as human input, unless typing in a field
 document.addEventListener("keydown", (event) => {
   if (!(event.code === "Space" || event.key === " ")) return;
 
@@ -37,7 +35,5 @@ document.addEventListener("keydown", (event) => {
 
   try {
     browser.runtime.sendMessage({ type: "SPACE_STOP" }).catch(() => {});
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 });

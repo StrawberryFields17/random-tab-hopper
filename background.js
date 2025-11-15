@@ -15,7 +15,7 @@ let runState = {
 
   // timing variance (percentage)
   jitterEnabled: false,
-  jitterPct: 0.25, // 25% => 0.25
+  jitterPct: 0.25,
 
   // custom variance range (seconds around base)
   rangeEnabled: false,
@@ -26,9 +26,9 @@ let runState = {
   useSelectedTabs: false,
 
   // mode
-  mode: "random", // "random" | "sequential"
+  mode: "random",
   nextIndex1: null,
-  nextSeqPos: 0, // for sequential over candidateTabs
+  nextSeqPos: 0,
 
   // lifetime
   stopDeadline: null,
@@ -40,29 +40,22 @@ let runState = {
   _activatingByCode: false
 };
 
-// manual selection state
 let selectedTabIds = new Set();
 let selectionMode = false;
-
-// range-marked tabs (for visual orbs when using range mode)
 let rangeMarkedIds = new Set();
 
-// ---- helpers for green marker on tab titles ----
+// ---- helpers for green markers ----
 
 async function markTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "MARK_TAB" });
-  } catch (e) {
-    // may fail on special pages (about:, internal pages) – ignore
-  }
+  } catch (e) {}
 }
 
 async function unmarkTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "UNMARK_TAB" });
-  } catch (e) {
-    // same as above
-  }
+  } catch (e) {}
 }
 
 async function clearRangeMarks() {
@@ -74,20 +67,26 @@ async function clearRangeMarks() {
   rangeMarkedIds.clear();
 }
 
-// ---- broadcast helper (popup status sync) ----
+async function clearAllMarkers() {
+  const ids = new Set([...selectedTabIds, ...rangeMarkedIds]);
+  for (const id of ids) {
+    await unmarkTabVisual(id);
+  }
+  selectedTabIds.clear();
+  rangeMarkedIds.clear();
+}
+
 function broadcastStateChange() {
   try {
     browser.runtime.sendMessage({ type: "STATE_CHANGED" }).catch(() => {});
-  } catch (_) {
-    // ignore
-  }
+  } catch (_) {}
 }
 
-// ---- message handler ----
+// ---- messages from popup/content ----
+
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || typeof msg.type !== "string") return;
 
-  // Any human input message (spacebar or generic)
   if ((msg.type === "HUMAN_INPUT" || msg.type === "SPACE_STOP") &&
       runState.running && runState.stopOnHuman) {
     return stopRunner().then(() => ({ ok: true }));
@@ -96,31 +95,22 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   switch (msg.type) {
     case "START":
       return handleStart(msg);
-
     case "STOP":
       return stopRunner().then(() => ({ ok: true }));
-
     case "PAUSE":
       return pauseRunner().then(() => ({ ok: true }));
-
     case "RESUME":
       return resumeRunner().then(() => ({ ok: true }));
-
     case "GET_STATE":
       return handleGetState();
 
     case "START_SELECTION":
-      selectionMode = true;
-      // keep existing selectedTabIds so you can tweak the current set
-      return Promise.resolve({ ok: true });
-
+      return handleStartSelection();
     case "STOP_SELECTION":
       selectionMode = false;
       return handleStopSelection();
-
     case "GET_SELECTED_TABS":
       return handleGetSelectedTabs();
-
     case "UNSELECT_TAB":
       if (typeof msg.tabId === "number") {
         selectedTabIds.delete(msg.tabId);
@@ -128,18 +118,21 @@ browser.runtime.onMessage.addListener((msg, sender) => {
       }
       return handleGetSelectedTabs();
 
+    case "CLEAR_ALL_MARKERS":
+      return clearAllMarkers().then(() => ({ ok: true }));
+
     default:
       return;
   }
 });
 
-// ---- tab activation: selection vs human-stop ----
+// ---- selection mode + human-stop on tab change ----
 
 browser.tabs.onActivated.addListener(async (activeInfo) => {
   const id = activeInfo.tabId;
 
   if (selectionMode) {
-    // In selection mode: clicking a tab toggles its membership + visual marker
+    // In selection mode: clicking a tab toggles in manual list
     if (selectedTabIds.has(id)) {
       selectedTabIds.delete(id);
       unmarkTabVisual(id);
@@ -150,13 +143,31 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
     return;
   }
 
-  // Normal behavior: stop on human tab change if enabled
   if (!runState.running || !runState.stopOnHuman) return;
   if (runState._activatingByCode) return;
   await stopRunner();
 });
 
-// ---- message helpers ----
+// ---- handlers ----
+
+async function handleStartSelection() {
+  selectionMode = true;
+
+  // Also add the currently active tab to the selection once,
+  // so you can start selecting from the tab you’re on.
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs.length) {
+      const id = tabs[0].id;
+      if (!selectedTabIds.has(id)) {
+        selectedTabIds.add(id);
+        await markTabVisual(id);
+      }
+    }
+  } catch (_) {}
+
+  return { ok: true };
+}
 
 async function handleStart(msg) {
   await stopRunner();
@@ -174,13 +185,11 @@ async function handleStart(msg) {
   runState.rangeMin = Math.max(0.1, Number(msg.rangeMin ?? 1.0));
   runState.rangeMax = Math.max(runState.rangeMin, Number(msg.rangeMax ?? runState.rangeMin));
 
-  // if both are somehow true, prefer range mode
   if (runState.rangeEnabled && runState.jitterEnabled) {
     runState.jitterEnabled = false;
   }
 
   runState.useSelectedTabs = !!msg.useSelectedTabs;
-
   runState.mode = (msg.mode === "sequential") ? "sequential" : "random";
   runState.stopOnHuman = !!msg.stopOnHuman;
   runState.nextIndex1 = null;
@@ -206,9 +215,7 @@ async function handleStart(msg) {
     }
   });
 
-  // Update green orbs for current mode:
-  // - manual: selectionMode clicking already marked them
-  // - range: mark all tabs in current range
+  // Update green dots for range mode
   await clearRangeMarks();
   if (!runState.useSelectedTabs && runState.windowId != null) {
     const allTabs = await browser.tabs.query({ windowId: runState.windowId });
@@ -244,18 +251,12 @@ async function handleGetState() {
 
 async function handleStopSelection() {
   const tabsMeta = await getSelectedTabsMeta();
-  return {
-    ok: true,
-    count: tabsMeta.length,
-    tabs: tabsMeta
-  };
+  return { ok: true, count: tabsMeta.length, tabs: tabsMeta };
 }
 
 async function handleGetSelectedTabs() {
   const tabsMeta = await getSelectedTabsMeta();
-  return {
-    tabs: tabsMeta
-  };
+  return { tabs: tabsMeta };
 }
 
 async function getSelectedTabsMeta() {
@@ -297,7 +298,7 @@ async function stopRunner() {
   runState.remainingMs = 0;
   runState.nextIndex1 = null;
   runState.nextSeqPos = 0;
-  broadcastStateChange(); // updates popup when stopped (human or timeout)
+  broadcastStateChange();
 }
 
 async function pauseRunner() {
@@ -319,7 +320,7 @@ async function resumeRunner() {
   scheduleNextHop(0);
 }
 
-// ---- timing helpers ----
+// ---- timing ----
 
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -331,7 +332,6 @@ function randFloat(min, max) {
 function computeDelayMs() {
   const base = runState.seconds;
 
-  // custom variance range (seconds) around base
   if (runState.rangeEnabled) {
     const mag = randFloat(runState.rangeMin, runState.rangeMax);
     const sign = Math.random() < 0.5 ? -1 : 1;
@@ -339,7 +339,6 @@ function computeDelayMs() {
     return seconds * 1000;
   }
 
-  // timing variance (percentage)
   if (runState.jitterEnabled && runState.jitterPct > 0) {
     const p = runState.jitterPct;
     const low = Math.max(0.05, base * (1 - p));
@@ -348,7 +347,6 @@ function computeDelayMs() {
     return seconds * 1000;
   }
 
-  // no variance
   return base * 1000;
 }
 
@@ -357,7 +355,6 @@ function scheduleNextHop(delayMs) {
 
   const remaining = Math.max(0, runState.stopDeadline - Date.now());
   if (remaining <= 0) {
-    // loop finished naturally
     stopRunner();
     return;
   }
@@ -369,15 +366,12 @@ function scheduleNextHop(delayMs) {
 
     const rem = Math.max(0, runState.stopDeadline - Date.now());
     if (rem <= 0) {
-      // finished after this hop
       stopRunner();
       return;
     }
     scheduleNextHop(Math.min(computeDelayMs(), rem));
   }, delay);
 }
-
-// ---- hopping logic ----
 
 async function hopOnce() {
   try {
