@@ -151,7 +151,7 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
   const id = activeInfo.tabId;
 
   if (selectionMode) {
-    // toggle inclusion
+    // toggle inclusion while choosing tabs
     if (selectedTabIds.has(id)) {
       selectedTabIds.delete(id);
       await unmarkTabVisual(id);
@@ -174,17 +174,17 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
 async function handleStartSelection() {
   selectionMode = true;
 
-  // auto-add current tab
+  // ALWAYS add and mark the current active tab as soon as choosing starts
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs.length > 0) {
       const id = tabs[0].id;
       selectionOriginTabId = id;
 
-      if (!selectedTabIds.has(id)) {
-        selectedTabIds.add(id);
-        await markTabVisual(id);
-      }
+      // add to the set (idempotent)
+      selectedTabIds.add(id);
+      // and force the green orb (also idempotent)
+      await markTabVisual(id);
     }
   } catch (_) {}
 
@@ -299,7 +299,7 @@ async function stopRunner() {
   if (runState.nextTimeoutId)
     clearTimeout(runState.nextTimeoutId);
 
-  // auto-clear range markers
+  // auto-clear range markers when stopping a range run
   if (!runState.useSelectedTabs)
     await clearRangeMarks();
 
