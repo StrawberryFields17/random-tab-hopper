@@ -62,9 +62,7 @@ function setJitter(on) {
   els.jitterToggle.setAttribute("aria-pressed", jitterOn ? "true" : "false");
   els.jitterRange.classList.toggle("slider-disabled", !jitterOn);
 
-  // mutual exclusivity
   if (jitterOn && rangeOn) setRange(false);
-
   updateJitterLabel();
 }
 
@@ -78,7 +76,6 @@ function setRange(on) {
     r.classList.toggle("disabled", !rangeOn);
   });
 
-  // mutual exclusivity
   if (rangeOn && jitterOn) setJitter(false);
 }
 
@@ -169,7 +166,7 @@ function setMode(mode) {
   });
 }
 
-// ---------- event wiring: variance ----------
+// ---------- variance events ----------
 
 els.jitterToggle.addEventListener("click", () => setJitter(!jitterOn));
 
@@ -199,14 +196,11 @@ els.useListToggle.addEventListener("click", () => {
 
 els.chooseTabsBtn.addEventListener("click", async () => {
   if (!selectingTabs) {
-    // entering selection mode: always ensure manual list is ON
     setUseSelectedTabs(true);
-
     selectingTabs = true;
     updateChooserButton();
     await browser.runtime.sendMessage({ type: "START_SELECTION" });
   } else {
-    // leaving selection mode manually
     selectingTabs = false;
     updateChooserButton();
     const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
@@ -223,7 +217,7 @@ els.clearMarkersBtn.addEventListener("click", async () => {
   updateManualNote();
 });
 
-// NEW: close tabs from last run
+// separate "Close included tabs" button
 els.closeLastRunBtn.addEventListener("click", async () => {
   try {
     const res = await browser.runtime.sendMessage({ type: "CLOSE_LAST_RUN_TABS" });
@@ -237,7 +231,7 @@ els.closeLastRunBtn.addEventListener("click", async () => {
       alert("No tabs from the last run to close.");
       return;
     }
-    // If some closed, just do it silently — user will see tabs disappear.
+    // if some closed, we stay quiet; the user will see them disappear
   } catch (e) {
     console.error("CLOSE_LAST_RUN_TABS error:", e);
   }
@@ -301,13 +295,11 @@ async function refreshState() {
     }
   }
 
-  // manual selection count
   const res = await browser.runtime.sendMessage({ type: "GET_SELECTED_TABS" });
   const tabs = (res && res.tabs) || [];
   manualCount = tabs.length;
   updateManualNote();
 
-  // choosing state
   const selState = await browser.runtime.sendMessage({ type: "GET_SELECTION_STATE" });
   selectingTabs = !!(selState && selState.selecting);
 
@@ -353,7 +345,6 @@ els.startBtn.addEventListener("click", async () => {
 
   selectingTabs = false;
   updateChooserButton();
-
   await refreshState();
 });
 

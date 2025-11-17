@@ -362,18 +362,22 @@
                   style="padding:4px 6px;flex:0 0 auto;">
             Clear
           </button>
-          <!-- NEW: Close last run tabs -->
-          <button id="closeLastRunBtn"
-                  class="btn btn-danger"
-                  style="padding:4px 6px;flex:0 0 auto;">
-            Close last
-          </button>
         </div>
       </div>
 
       <div class="muted" id="manualNote" style="margin-top:2px;">
         Manual tab list disabled (using tab range).
       </div>
+    </div>
+
+    <!-- NEW: separate close-last button -->
+    <div class="row" style="margin-top:4px;">
+      <label>Last run</label>
+      <button id="closeLastRunBtn"
+              class="btn btn-danger"
+              style="justify-self:end;">
+        Close included tabs
+      </button>
     </div>
 
     <div class="row" style="margin-top:4px;">
