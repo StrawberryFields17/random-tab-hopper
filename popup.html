@@ -1,418 +1,189 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>Random Tab Hopper</title>
+    <meta charset="utf-8">
+    <title>Random Tab Hopper</title>
+    <link rel="stylesheet" href="styles.css">
 
-  <style>
-    :root{
-      --bg:#121417; --panel:#1b1f26; --text:#e8ecf1; --muted:#9aa6b2;
-      --ok:#35d07f; --warn:#ffb84d; --danger:#ff6b6b; --accent:#5aa9ff;
-      --track:#2a313b; --track-fill:#3a6fb2; --thumb:#e8ecf1;
-      --btn-gloss-top:rgba(255,255,255,.18); --btn-gloss-bot:rgba(255,255,255,.06);
-    }
+    <style>
+        body {
+            background: #121212;
+            color: #e6e6e6;
+            font-family: Arial, sans-serif;
+            width: 350px;
+            padding: 12px;
+        }
 
-    html,body{
-      background:var(--bg);
-      color:var(--text);
-    }
-    body{
-      font:13px/1.35 system-ui,Segoe UI,Roboto,sans-serif;
-      margin:8px;
-      width:340px;
-    }
+        h1 {
+            text-align: center;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
 
-    .card{
-      background:var(--panel);
-      border-radius:12px;
-      padding:10px;
-      box-shadow:0 4px 14px rgba(0,0,0,.35);
-    }
+        .row {
+            margin-bottom: 10px;
+        }
 
-    h3{
-      margin:0 0 8px;
-      font-weight:600;
-      letter-spacing:.2px;
-      font-size:14px;
-    }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 4px;
+        }
 
-    .row{
-      display:grid;
-      grid-template-columns:1fr 140px;
-      gap:8px;
-      margin:6px 0;
-      align-items:center;
-    }
+        input[type="number"] {
+            width: 80px;
+            padding: 4px;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 6px;
+        }
 
-    label{
-      color:var(--muted);
-      font-weight:600;
-      font-size:12px;
-    }
+        .btn {
+            padding: 6px 14px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
 
-    input[type=number]{
-      width:100%;
-      padding:4px 6px;
-      border-radius:8px;
-      border:1px solid #2a313b;
-      background:#11161b;
-      color:var(--text);
-      font-size:12px;
-    }
+        .btn-green { background: #0a8a34; color: white; }
+        .btn-yellow { background: #d48c00; color: white; }
+        .btn-red { background: #b02020; color: white; }
 
-    input[type=range]{ width:100%; }
-    .muted{ color:var(--muted); font-size:11px; }
+        .btn-toggle {
+            background: #222;
+            color: #ccc;
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid #444;
+        }
 
-    .toolbar{
-      display:flex;
-      gap:6px;
-      margin-top:8px;
-    }
+        .btn-active {
+            background: #198754 !important;
+            color: white !important;
+            border-color: #198754 !important;
+        }
 
-    .btn{
-      flex:1;
-      padding:7px 8px;
-      border-radius:10px;
-      border:1px solid #2b3340;
-      background:
-        linear-gradient(180deg,var(--btn-gloss-top),var(--btn-gloss-bot)),
-        linear-gradient(180deg,#2a3240,#1e2633);
-      color:var(--text);
-      cursor:pointer;
-      user-select:none;
-      transition:transform .06s ease, box-shadow .06s ease, opacity .08s ease;
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.05),
-        0 2px 6px rgba(0,0,0,.3);
-      font-size:12px;
-    }
+        .mode-btn {
+            padding: 6px 10px;
+            border-radius: 12px;
+            border: none;
+            margin-right: 6px;
+        }
 
-    .btn:hover{
-      transform:translateY(-1px);
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.08),
-        0 3px 8px rgba(0,0,0,.35);
-    }
+        .mode-active {
+            background: #0a84ff !important;
+            color: #fff !important;
+        }
 
-    .btn:active{
-      transform:translateY(1px);
-      box-shadow:
-        inset 0 2px 4px rgba(0,0,0,0.6),
-        0 0 2px rgba(0,0,0,0.5);
-      filter:brightness(0.85);
-      border-color:#111;
-    }
-
-    .btn-accent{
-      border-color:#2d5f9e;
-      background:linear-gradient(180deg,#3a6fb2,#234a7c);
-    }
-    .btn-ok{
-      border-color:#147a46;
-      background:linear-gradient(180deg,#3ac082,#1f7a4f);
-    }
-    .btn-warn{
-      border-color:#a66a11;
-      background:linear-gradient(180deg,#e6a23c,#9b671b);
-    }
-    .btn-danger{
-      border-color:#8a2222;
-      background:linear-gradient(180deg,#e06565,#962d2d);
-    }
-
-    .toggle{
-      padding:3px 8px;
-      border-radius:9px;
-      border:1px solid #2b3340;
-      background:#1a1f29;
-      color:var(--text);
-      font-size:11px;
-      cursor:pointer;
-    }
-
-    .toggle.on{
-      background:#2b7030;
-      border-color:#4c9b3e;
-    }
-
-    .status{
-      margin-top:6px;
-      font-weight:600;
-      font-size:12px;
-    }
-    .running{ color:var(--ok); }
-    .paused{ color:var(--warn); }
-    .stopped{ color:var(--danger); }
-
-    .section-disabled{
-      opacity:0.45;
-      pointer-events:none;
-    }
-
-    /* ---------- DUAL SLIDER ---------- */
-
-    .range-block{ grid-column:1/-1; margin-top:4px; }
-
-    .range-wrap{
-      position:relative;
-      height:34px;
-    }
-
-    .track{
-      position:absolute;
-      left:6px; right:6px;
-      top:14px;
-      height:5px;
-      border-radius:5px;
-      background:var(--track);
-      z-index:1;
-    }
-
-    .track-fill{
-      position:absolute;
-      top:14px;
-      height:5px;
-      border-radius:5px;
-      background:var(--track-fill);
-      z-index:2;
-    }
-
-    .range{
-      position:absolute;
-      left:0; right:0;
-      appearance:none;
-      background:transparent;
-      pointer-events:auto;
-    }
-
-    .range.min-handle{
-      top:0;
-      height:17px;
-      z-index:3;
-    }
-
-    .range.max-handle{
-      bottom:0;
-      height:17px;
-      z-index:3;
-    }
-
-    .range::-webkit-slider-thumb{
-      appearance:none;
-      width:12px;
-      height:12px;
-      border-radius:50%;
-      background:var(--thumb);
-      border:1px solid #000;
-      box-shadow:0 0 0 2px rgba(0,0,0,.15);
-    }
-
-    .range::-moz-range-thumb{
-      width:12px;
-      height:12px;
-      border-radius:50%;
-      background:var(--thumb);
-      border:1px solid #000;
-      box-shadow:0 0 0 2px rgba(0,0,0,.15);
-    }
-
-    .range::-webkit-slider-runnable-track,
-    .range::-moz-range-track{
-      background:transparent;
-    }
-
-    .range.disabled{
-      filter:grayscale(1) brightness(.7);
-    }
-
-    .endcaps{
-      display:flex;
-      justify-content:space-between;
-      margin-top:2px;
-      font-size:11px;
-      color:var(--muted);
-    }
-
-    /* ---------- MODE SLIDER ---------- */
-
-    .mode-switch{
-      display:flex;
-      justify-content:flex-end;
-    }
-
-    .mode-pill{
-      display:flex;
-      background:#0f1319;
-      border-radius:999px;
-      padding:2px;
-      border:1px solid #2b3340;
-      width:140px;
-    }
-
-    .mode-option{
-      flex:1;
-      border:none;
-      border-radius:999px;
-      background:transparent;
-      color:var(--muted);
-      font-size:11px;
-      padding:4px 0;
-      cursor:pointer;
-    }
-
-    .mode-option.active{
-      background:var(--accent);
-      color:#ffffff;
-      box-shadow:0 0 4px rgba(0,0,0,.6);
-    }
-
-    /* Choose tabs colour states */
-    .btn-chooser-idle{
-      border-color:#a66a11;
-      background:linear-gradient(180deg,#e6a23c,#9b671b);
-    }
-    .btn-chooser-active{
-      border-color:#147a46;
-      background:linear-gradient(180deg,#3ac082,#1f7a4f);
-    }
-  </style>
+        .toolbar {
+            margin-top: 12px;
+            text-align: center;
+        }
+    </style>
 </head>
+
 <body>
 
-  <div class="card">
-    <h3>Random Tab Hopper</h3>
+<h1>Random Tab Hopper</h1>
 
-    <!-- TAB RANGE SECTION -->
-    <div id="rangeSection">
-      <div class="row">
-        <label>Tab start</label>
-        <input id="tabStart" type="number" min="1" value="1" />
-      </div>
-      <div class="row">
-        <label>Tab end</label>
-        <input id="tabEnd" type="number" min="1" value="9" />
-      </div>
-      <div class="muted" id="rangeNote" style="margin-top:2px;">
-        Using tab range (manual tab list disabled).
-      </div>
+<!-- TAB RANGE -->
+<div class="row">
+    <label>Tab start</label>
+    <input type="number" id="tabStart" min="1" value="1">
+</div>
+
+<div class="row">
+    <label>Tab end</label>
+    <input type="number" id="tabEnd" min="1" value="5">
+</div>
+
+<div class="row" id="rangeNote" style="font-size:12px; opacity:0.7;">
+    Using tab range (manual tab list disabled).
+</div>
+
+<!-- SECONDS -->
+<div class="row">
+    <label>Seconds per tab</label>
+    <input type="number" id="secondsPerTab" min="1" value="2">
+</div>
+
+<!-- VARIANCE -->
+<div class="row">
+    <label>Timing Variance (±<span id="varianceLabel">0%</span>)</label>
+    <button id="varianceToggle" class="btn btn-toggle">OFF</button>
+    <input type="range" id="varianceSlider" min="0" max="50" value="0" style="width:100%; margin-top:6px;">
+</div>
+
+<!-- CUSTOM VARIANCE -->
+<div class="row">
+    <label>Custom Variance Range (seconds)</label>
+    <button id="customVarianceToggle" class="btn btn-toggle">OFF</button>
+    <div style="margin-top:6px;">
+        <input type="range" id="customMin" min="0" max="10" value="1">
+        <input type="range" id="customMax" min="1" max="10" value="2" style="margin-left:4px;">
     </div>
-
-    <div class="row" style="margin-top:6px;">
-      <label>Seconds per tab</label>
-      <input id="seconds" type="number" min="0.1" step="0.1" value="5" />
+    <div id="customRangeInfo" style="font-size:12px; opacity:0.7; margin-top:4px;">
+        Min: 1s    Max: 2s
     </div>
+</div>
 
-    <!-- TIMING VARIANCE (PERCENT) -->
-    <div class="row">
-      <label id="jitterLabel">Timing Variance (±0%)</label>
-      <button id="jitterToggle" class="toggle" aria-pressed="false">OFF</button>
-    </div>
-    <div class="row">
-      <span class="muted">Variance amount</span>
-      <div style="display:flex;gap:6px;align-items:center">
-        <input id="jitterRange" type="range" min="0" max="100" step="1" value="25" />
-        <span id="jitterValue" class="muted">25%</span>
-      </div>
-    </div>
+<!-- MANUAL TAB LIST -->
+<div class="row">
+    <label>Manual tab list</label>
+    <button id="manualToggle" class="btn btn-toggle">OFF</button>
+</div>
 
-    <!-- CUSTOM VARIANCE RANGE -->
-    <div class="row">
-      <label>Custom Variance Range (seconds)</label>
-      <button id="rangeToggle" class="toggle" aria-pressed="false">OFF</button>
-    </div>
+<div class="row">
+    <label>Selection</label>
+    <button id="chooseTabsBtn" class="btn btn-yellow">Choose</button>
+    <button id="clearSelectionBtn" class="btn btn-red">Clear</button>
+</div>
 
-    <div class="range-block">
-      <div class="range-wrap" aria-label="Custom variance range">
-        <div class="track"></div>
-        <div class="track-fill" id="trackFill" style="left:6%;right:86.7%"></div>
+<div class="row" id="manualNote" style="font-size:12px; opacity:0.7;">
+    Manual tab list disabled (using tab range).
+</div>
 
-        <input id="minRange" class="range min-handle disabled"
-               type="range" min="0.5" max="30" step="0.5" value="1.0">
+<!-- TOTAL MINUTES -->
+<div class="row">
+    <label>Total minutes</label>
+    <input type="number" id="totalMinutes" min="1" value="5">
+</div>
 
-        <input id="maxRange" class="range max-handle disabled"
-               type="range" min="0.5" max="30" step="0.5" value="2.0">
-      </div>
+<!-- MODE -->
+<div class="row">
+    <label>Mode</label>
+    <button id="modeRandom" class="mode-btn mode-active">Random</button>
+    <button id="modeSequential" class="mode-btn">Sequential</button>
+</div>
 
-      <div class="endcaps">
-        <span>Min: <span id="minLabel">1.0s</span></span>
-        <span>Max: <span id="maxLabel">2.0s</span></span>
-      </div>
+<!-- STOP ON HUMAN INPUT -->
+<div class="row">
+    <label>Stop on human input</label>
+    <input type="checkbox" id="humanStop">
+</div>
 
-      <div class="muted">
-        Randomly offsets the base time earlier or later within this range.
-      </div>
-    </div>
+<!-- CLEANUP SECTION (NEW) -->
+<div style="text-align:center; margin:10px 0 12px;">
+    <div style="font-size:13px; margin-bottom:6px; opacity:0.8;">Cleanup</div>
+    <button id="closeLastRunBtn" class="btn btn-red" style="width:85%; font-size:14px;">
+        Close last run tabs
+    </button>
+</div>
 
-    <!-- MANUAL TAB LIST -->
-    <div id="manualSection" style="margin-top:4px;">
-      <div class="row">
-        <label>Manual tab list</label>
-        <button id="useListToggle" class="toggle" aria-pressed="false">OFF</button>
-      </div>
-      <div class="row">
-        <span class="muted">Selection</span>
-        <div style="display:flex;gap:4px;justify-content:flex-end">
-          <button id="chooseTabsBtn"
-                  class="btn btn-chooser-idle"
-                  style="padding:4px 6px;flex:0 0 auto;">
-            Choose
-          </button>
-          <button id="clearMarkersBtn"
-                  class="btn btn-danger"
-                  style="padding:4px 6px;flex:0 0 auto;">
-            Clear
-          </button>
-        </div>
-      </div>
+<!-- START / PAUSE / STOP -->
+<div class="toolbar">
+    <button id="startBtn" class="btn btn-green">Start</button>
+    <button id="pauseBtn" class="btn btn-yellow">Pause</button>
+    <button id="stopBtn" class="btn btn-red">Stop</button>
+</div>
 
-      <div class="muted" id="manualNote" style="margin-top:2px;">
-        Manual tab list disabled (using tab range).
-      </div>
-    </div>
+<div id="statusText" style="text-align:center; margin-top:8px; font-size:13px; color:#ff5a5a;">
+    Stopped
+</div>
 
-    <!-- NEW: separate close-last button -->
-    <div class="row" style="margin-top:4px;">
-      <label>Last run</label>
-      <button id="closeLastRunBtn"
-              class="btn btn-danger"
-              style="justify-self:end;">
-        Close included tabs
-      </button>
-    </div>
+<script src="popup.js"></script>
 
-    <div class="row" style="margin-top:4px;">
-      <label>Total minutes</label>
-      <input id="totalMinutes" type="number" min="0.1" step="0.1" value="3" />
-    </div>
-
-    <!-- MODE SLIDER -->
-    <div class="row">
-      <label>Mode</label>
-      <div class="mode-switch">
-        <div class="mode-pill" id="modeSwitch">
-          <button class="mode-option active" data-mode="random">Random</button>
-          <button class="mode-option" data-mode="sequential">Sequential</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="row">
-      <label>Stop on human input</label>
-      <input id="stopOnHuman" type="checkbox" checked />
-    </div>
-    <div class="muted" style="margin-top:2px;">
-      When enabled, pressing Space or clicking another tab stops hopping.
-    </div>
-
-    <div class="toolbar">
-      <button id="startBtn" class="btn btn-ok">Start</button>
-      <button id="pauseResumeBtn" class="btn btn-warn">Pause</button>
-      <button id="stopBtn" class="btn btn-danger">Stop</button>
-    </div>
-
-    <div id="status" class="status stopped">Stopped</div>
-  </div>
-
-  <script src="popup.js"></script>
 </body>
 </html>
