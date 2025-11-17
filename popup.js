@@ -25,6 +25,7 @@ const els = {
   useListToggle: document.getElementById("useListToggle"),
   chooseTabsBtn: document.getElementById("chooseTabsBtn"),
   clearMarkersBtn: document.getElementById("clearMarkersBtn"),
+  closeLastRunBtn: document.getElementById("closeLastRunBtn"),
 
   totalMinutes: document.getElementById("totalMinutes"),
   stopOnHuman: document.getElementById("stopOnHuman"),
@@ -153,7 +154,7 @@ function updateChooserButton() {
     els.chooseTabsBtn.classList.add("btn-chooser-active");
     els.chooseTabsBtn.classList.remove("btn-chooser-idle");
   } else {
-    els.chooseTabsBtn.textContent = "Choose tabs";
+    els.chooseTabsBtn.textContent = "Choose";
     els.chooseTabsBtn.classList.add("btn-chooser-idle");
     els.chooseTabsBtn.classList.remove("btn-chooser-active");
   }
@@ -220,6 +221,26 @@ els.clearMarkersBtn.addEventListener("click", async () => {
   selectingTabs = false;
   updateChooserButton();
   updateManualNote();
+});
+
+// NEW: close tabs from last run
+els.closeLastRunBtn.addEventListener("click", async () => {
+  try {
+    const res = await browser.runtime.sendMessage({ type: "CLOSE_LAST_RUN_TABS" });
+    if (!res) return;
+
+    if (res.running) {
+      alert("Stop the current run before closing tabs from the last run.");
+      return;
+    }
+    if (!res.closed) {
+      alert("No tabs from the last run to close.");
+      return;
+    }
+    // If some closed, just do it silently — user will see tabs disappear.
+  } catch (e) {
+    console.error("CLOSE_LAST_RUN_TABS error:", e);
+  }
 });
 
 // ---------- mode slider ----------

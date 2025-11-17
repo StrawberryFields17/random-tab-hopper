@@ -25,9 +25,8 @@ let runState = {
   // manual tab list
   useSelectedTabs: false,
 
-  // mode
+  // mode: "random" or "sequential"
   mode: "random",
-  nextIndex1: null,
   nextSeqPos: 0,
 
   // lifetime control
@@ -46,12 +45,17 @@ let selectionOriginTabId = null;
 
 let rangeMarkedIds = new Set();
 
+// NEW: tabs that were part of the last run's pool
+let lastRunTabIds = new Set();
+
 // ---------------- GREEN MARKER HELPERS ----------------
 
 async function markTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "MARK_TAB" });
-  } catch (_) {}
+  } catch (_) {
+    // may fail on about: pages, etc.
+  }
 }
 
 async function unmarkTabVisual(tabId) {
@@ -79,7 +83,11 @@ async function clearAllMarkers() {
   rangeMarkedIds.clear();
   selectionMode = false;
   selectionOriginTabId = null;
+  // Note: we DO NOT clear lastRunTabIds here, because
+  // the user might still want to close "tabs from last run"
 }
+
+// ---------------- STATE BROADCAST ----------------
 
 function broadcastStateChange() {
   try {
@@ -140,6 +148,10 @@ browser.runtime.onMessage.addListener((msg, sender) => {
         originTabId: selectionOriginTabId
       });
 
+    // NEW: close all tabs that were in the last run
+    case "CLOSE_LAST_RUN_TABS":
+      return closeLastRunTabs();
+
     default:
       return;
   }
@@ -181,9 +193,7 @@ async function handleStartSelection() {
       const id = tabs[0].id;
       selectionOriginTabId = id;
 
-      // add to the set (idempotent)
       selectedTabIds.add(id);
-      // and force the green orb (also idempotent)
       await markTabVisual(id);
     }
   } catch (_) {}
@@ -212,8 +222,9 @@ async function handleStart(msg) {
   runState.rangeMin = Number(msg.rangeMin) || 0;
   runState.rangeMax = Number(msg.rangeMax) || runState.rangeMin;
 
-  if (runState.rangeEnabled && runState.jitterEnabled)
+  if (runState.rangeEnabled && runState.jitterEnabled) {
     runState.jitterEnabled = false;
+  }
 
   runState.useSelectedTabs = !!msg.useSelectedTabs;
   runState.mode = msg.mode === "sequential" ? "sequential" : "random";
@@ -224,11 +235,13 @@ async function handleStart(msg) {
   const win = await browser.windows.getCurrent();
   runState.windowId = win.id;
 
-  // Store persistently
+  // Store persistently for popup restore
   await browser.storage.local.set({ lastParams: msg });
 
-  // prepare visual marking for range mode
+  // Clear old range marks
   await clearRangeMarks();
+
+  // Mark range tabs with green orb if using range mode
   if (!runState.useSelectedTabs) {
     const allTabs = await browser.tabs.query({ windowId: runState.windowId });
     allTabs.sort((a, b) => a.index - b.index);
@@ -242,8 +255,37 @@ async function handleStart(msg) {
     }
   }
 
+  // NEW: snapshot the tabs included in this run as "last run tabs"
+  await snapshotLastRunTabs();
+
   startRunner();
   return { ok: true };
+}
+
+// Snapshot which tabs are part of this run
+async function snapshotLastRunTabs() {
+  lastRunTabIds.clear();
+
+  if (runState.windowId == null) return;
+
+  const allTabs = await browser.tabs.query({ windowId: runState.windowId });
+  allTabs.sort((a, b) => a.index - b.index);
+
+  let list;
+
+  if (runState.useSelectedTabs && selectedTabIds.size > 0) {
+    const set = new Set(selectedTabIds);
+    list = allTabs.filter(t => set.has(t.id));
+  } else {
+    list = allTabs.filter(t => {
+      const idx = t.index + 1;
+      return idx >= runState.tabStart && idx <= runState.tabEnd;
+    });
+  }
+
+  for (const t of list) {
+    lastRunTabIds.add(t.id);
+  }
 }
 
 // ---------------- GET STATE ----------------
@@ -257,7 +299,7 @@ async function handleGetState() {
   };
 }
 
-// ---------------- STOP SELECTION ----------------
+// ---------------- SELECTION HELPERS ----------------
 
 async function handleStopSelection() {
   const list = await getSelectedTabsMeta();
@@ -273,12 +315,14 @@ async function getSelectedTabsMeta() {
   if (!selectedTabIds.size) return [];
   const all = await browser.tabs.query({});
   const idSet = new Set(selectedTabIds);
-  return all.filter(t => idSet.has(t.id)).map(t => ({
-    id: t.id,
-    title: t.title,
-    index1: t.index + 1,
-    windowId: t.windowId
-  }));
+  return all
+    .filter(t => idSet.has(t.id))
+    .map(t => ({
+      id: t.id,
+      title: t.title,
+      index1: t.index + 1,
+      windowId: t.windowId
+    }));
 }
 
 // ---------------- RUNNER LOGIC ----------------
@@ -288,7 +332,7 @@ function startRunner() {
   runState.running = true;
   runState.paused = false;
 
-  runState.remainingMs = runState.totalMinutes * 60000;
+  runState.remainingMs = runState.totalMinutes * 60_000;
   runState.stopDeadline = Date.now() + runState.remainingMs;
 
   broadcastStateChange();
@@ -296,12 +340,15 @@ function startRunner() {
 }
 
 async function stopRunner() {
-  if (runState.nextTimeoutId)
+  if (runState.nextTimeoutId) {
     clearTimeout(runState.nextTimeoutId);
+    runState.nextTimeoutId = null;
+  }
 
   // auto-clear range markers when stopping a range run
-  if (!runState.useSelectedTabs)
+  if (!runState.useSelectedTabs) {
     await clearRangeMarks();
+  }
 
   runState.running = false;
   runState.paused = false;
@@ -316,8 +363,10 @@ async function pauseRunner() {
   if (!runState.running || runState.paused) return;
   runState.paused = true;
 
-  if (runState.nextTimeoutId)
+  if (runState.nextTimeoutId) {
     clearTimeout(runState.nextTimeoutId);
+    runState.nextTimeoutId = null;
+  }
 
   runState.remainingMs = Math.max(0, runState.stopDeadline - Date.now());
   broadcastStateChange();
@@ -355,7 +404,10 @@ function scheduleNextHop(delayMs) {
   if (!runState.running || runState.paused) return;
 
   const remain = Math.max(0, runState.stopDeadline - Date.now());
-  if (remain <= 0) return stopRunner();
+  if (remain <= 0) {
+    stopRunner();
+    return;
+  }
 
   const d = Math.min(remain, delayMs);
 
@@ -364,7 +416,10 @@ function scheduleNextHop(delayMs) {
     if (!runState.running || runState.paused) return;
 
     const r = Math.max(0, runState.stopDeadline - Date.now());
-    if (r <= 0) return stopRunner();
+    if (r <= 0) {
+      stopRunner();
+      return;
+    }
 
     scheduleNextHop(Math.min(r, computeDelayMs()));
   }, d);
@@ -375,6 +430,8 @@ async function hopOnce() {
     if (!runState.running || runState.paused || runState.windowId == null) return;
 
     const tabs = await browser.tabs.query({ windowId: runState.windowId });
+    if (!tabs.length) return;
+
     tabs.sort((a, b) => a.index - b.index);
 
     let list;
@@ -388,7 +445,7 @@ async function hopOnce() {
       });
     }
 
-    if (list.length === 0) return;
+    if (!list.length) return;
 
     let next;
     if (runState.mode === "sequential") {
@@ -404,9 +461,42 @@ async function hopOnce() {
     try {
       await browser.tabs.update(next.id, { active: true });
     } finally {
-      setTimeout(() => (runState._activatingByCode = false), 120);
+      setTimeout(() => {
+        runState._activatingByCode = false;
+      }, 120);
     }
   } catch (e) {
     console.error("hopOnce error:", e);
   }
+}
+
+// ---------------- CLOSE LAST RUN TABS ----------------
+
+async function closeLastRunTabs() {
+  // Don't close while a run is active
+  if (runState.running) {
+    return { closed: 0, running: true };
+  }
+
+  if (!lastRunTabIds.size) {
+    return { closed: 0, running: false };
+  }
+
+  const allTabs = await browser.tabs.query({});
+  const idSet = new Set(lastRunTabIds);
+  let closed = 0;
+
+  for (const t of allTabs) {
+    if (idSet.has(t.id)) {
+      try {
+        await browser.tabs.remove(t.id);
+        closed++;
+      } catch (_) {
+        // tab might already be gone; ignore
+      }
+    }
+  }
+
+  lastRunTabIds.clear();
+  return { closed, running: false };
 }
