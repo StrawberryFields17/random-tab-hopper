@@ -23,7 +23,7 @@ document.addEventListener(
       return;
     }
 
-    switch (e.key) {
+    switch (e.code) {
       case " ":
         // Spacebar -> stop on human input
         safeSend({ type: "SPACE_STOP" });
