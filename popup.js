@@ -37,12 +37,11 @@ const els = {
 
   modeSwitch: document.getElementById("modeSwitch"),
 
-  // NEW:
+  // hotkey help
   hotkeyHelpBtn: document.getElementById("hotkeyHelpBtn"),
   hotkeyPanel: document.getElementById("hotkeyPanel"),
   hotkeyCloseBtn: document.getElementById("hotkeyCloseBtn")
 };
-
 
 // state
 let currentMode = "random";
@@ -229,7 +228,7 @@ els.clearMarkersBtn.addEventListener("click", async () => {
   updateManualNote();
 });
 
-// ---------- cleanup: close tabs from last run ----------
+// ---------- cleanup: close included tabs (last run) ----------
 
 els.closeLastRunBtn.addEventListener("click", async () => {
   try {
@@ -244,7 +243,7 @@ els.closeLastRunBtn.addEventListener("click", async () => {
       alert("No tabs from the last run to close.");
       return;
     }
-    // Tabs closed successfully; user will see them disappear.
+    // Tabs closed successfully; user will see them disappear
   } catch (e) {
     console.error("CLOSE_LAST_RUN_TABS error:", e);
   }
@@ -384,6 +383,33 @@ els.pauseResumeBtn.addEventListener("click", async () => {
 els.stopBtn.addEventListener("click", async () => {
   await browser.runtime.sendMessage({ type: "STOP" });
   await refreshState();
+});
+
+// ---------- ENTER key in popup: start when stopped ----------
+
+document.addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+
+  // If user is typing in an input field in the popup, don't hijack Enter
+  const active = document.activeElement;
+  if (
+    active &&
+    (active.tagName === "INPUT" ||
+      active.tagName === "TEXTAREA" ||
+      active.isContentEditable)
+  ) {
+    return;
+  }
+
+  try {
+    const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
+    if (state && state.running) return; // already running
+
+    // Behave like clicking Start
+    els.startBtn.click();
+  } catch (err) {
+    console.error("Enter-to-start error:", err);
+  }
 });
 
 // ---------- init ----------

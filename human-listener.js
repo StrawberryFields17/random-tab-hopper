@@ -30,12 +30,14 @@ document.addEventListener(
         break;
 
       case "ArrowRight":
+      case "Right": // some layouts send "Right"
         // Next included tab immediately
         safeSend({ type: "HOTKEY_NEXT" });
         e.preventDefault();
         break;
 
       case "ArrowLeft":
+      case "Left": // some layouts send "Left"
         // Previous tab from history
         safeSend({ type: "HOTKEY_PREV" });
         e.preventDefault();
@@ -48,7 +50,7 @@ document.addEventListener(
         break;
 
       case "Enter":
-        // Resume
+        // Resume (when content page has focus)
         safeSend({ type: "HOTKEY_RESUME" });
         break;
 
@@ -59,9 +61,9 @@ document.addEventListener(
         break;
 
       default:
-        // (No default HUMAN_INPUT — mouse clicks no longer stop)
+        // No default HUMAN_INPUT here: mouse and other keys won't stop the run
         break;
     }
   },
-  { capture: true } // REQUIRED so arrow keys are not swallowed by page scripts
+  { capture: true } // capture phase so page scripts can't swallow the arrow keys
 );
