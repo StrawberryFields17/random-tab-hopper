@@ -1,5 +1,5 @@
 // human-listener.js
-// Listens for keyboard / mouse input and sends signals to the background script.
+// Listens for keyboard input and sends signals to the background script.
 
 function safeSend(msg) {
   try {
@@ -12,54 +12,56 @@ document.addEventListener(
   (e) => {
     if (e.repeat) return; // ignore held-down keys
 
+    // Do not trigger hotkeys while typing in any input field
+    const active = document.activeElement;
+    if (
+      active &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.isContentEditable)
+    ) {
+      return;
+    }
+
     switch (e.key) {
-      case " ": // spacebar -> stop on human input (old behavior)
+      case " ":
+        // Spacebar -> stop on human input
         safeSend({ type: "SPACE_STOP" });
         break;
 
       case "ArrowRight":
-        // Hotkey: go to next included tab immediately
+        // Next included tab immediately
         safeSend({ type: "HOTKEY_NEXT" });
         e.preventDefault();
         break;
 
       case "ArrowLeft":
-        // Hotkey: go back to previously shown tab in this run
+        // Previous tab from history
         safeSend({ type: "HOTKEY_PREV" });
         e.preventDefault();
         break;
 
       case "p":
       case "P":
-        // Hotkey: pause
+        // Pause
         safeSend({ type: "HOTKEY_PAUSE" });
         break;
 
       case "Enter":
-        // Hotkey: resume
+        // Resume
         safeSend({ type: "HOTKEY_RESUME" });
         break;
 
       case "s":
       case "S":
-        // Hotkey: stop
+        // Stop
         safeSend({ type: "HOTKEY_STOP" });
         break;
 
       default:
-        // Any other key counts as "human input" (for optional auto-stop)
-        safeSend({ type: "HUMAN_INPUT" });
+        // (No default HUMAN_INPUT — mouse clicks no longer stop)
         break;
     }
   },
-  true
-);
-
-// Mouse clicks still count as human input
-document.addEventListener(
-  "mousedown",
-  () => {
-    safeSend({ type: "HUMAN_INPUT" });
-  },
-  true
+  { capture: true } // REQUIRED so arrow keys are not swallowed by page scripts
 );
