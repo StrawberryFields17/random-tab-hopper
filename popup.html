@@ -23,14 +23,22 @@
     }
 
     .card{
+      position:relative;
       background:var(--panel);
       border-radius:12px;
       padding:8px;
       box-shadow:0 4px 14px rgba(0,0,0,.35);
     }
 
+    .card-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:4px;
+    }
+
     h3{
-      margin:0 0 6px;
+      margin:0;
       font-weight:600;
       letter-spacing:.2px;
       font-size:13px;
@@ -266,7 +274,6 @@
       box-shadow:0 0 4px rgba(0,0,0,.6);
     }
 
-    /* Choose tabs colour states */
     .btn-chooser-idle{
       border-color:#a66a11;
       background:linear-gradient(180deg,#e6a23c,#9b671b);
@@ -275,12 +282,101 @@
       border-color:#147a46;
       background:linear-gradient(180deg,#3ac082,#1f7a4f);
     }
+
+    /* ---------- HOTKEY OVERLAY ---------- */
+
+    .hotkey-btn{
+      font-size:9px;
+      padding:2px 6px;
+      border-radius:8px;
+      border:1px solid #2b3340;
+      background:#11161b;
+      color:var(--muted);
+      cursor:pointer;
+    }
+
+    .hotkey-panel{
+      position:absolute;
+      inset:6px;
+      border-radius:10px;
+      background:#11161b;
+      box-shadow:0 6px 16px rgba(0,0,0,.7);
+      padding:8px;
+      display:none;
+      z-index:20;
+      font-size:11px;
+    }
+
+    .hotkey-panel.visible{
+      display:block;
+    }
+
+    .hotkey-panel-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:4px;
+    }
+
+    .hotkey-panel-header h4{
+      margin:0;
+      font-size:12px;
+      font-weight:600;
+    }
+
+    .hotkey-close{
+      border:none;
+      background:transparent;
+      color:var(--muted);
+      cursor:pointer;
+      font-size:13px;
+      padding:2px 4px;
+    }
+
+    .hotkey-list{
+      margin:4px 0 0;
+      padding-left:12px;
+    }
+
+    .hotkey-list li{
+      margin:2px 0;
+    }
+
+    .kbd{
+      display:inline-block;
+      padding:1px 4px;
+      border-radius:3px;
+      border:1px solid #3b3f46;
+      background:#181c22;
+      font-size:10px;
+      margin-right:3px;
+    }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <h3>Random Tab Hopper</h3>
+    <div class="card-header">
+      <h3>Random Tab Hopper</h3>
+      <button id="hotkeyHelpBtn" class="hotkey-btn">Hotkeys</button>
+    </div>
+
+    <!-- HOTKEY OVERLAY -->
+    <div id="hotkeyPanel" class="hotkey-panel">
+      <div class="hotkey-panel-header">
+        <h4>Keyboard shortcuts</h4>
+        <button id="hotkeyCloseBtn" class="hotkey-close">✕</button>
+      </div>
+      <ul class="hotkey-list">
+        <li><span class="kbd">Space</span> Stop (if “Stop on human input” is enabled)</li>
+        <li><span class="kbd">→</span> Jump to next included tab immediately</li>
+        <li><span class="kbd">←</span> Go back to previously shown tab in this run</li>
+        <li><span class="kbd">P</span> Pause</li>
+        <li><span class="kbd">Enter</span> Resume</li>
+        <li><span class="kbd">S</span> Stop (same as Stop button)</li>
+        <li><span class="kbd">Mouse click</span> Stop (if “Stop on human input” is enabled)</li>
+      </ul>
+    </div>
 
     <!-- TAB RANGE SECTION -->
     <div id="rangeSection">

@@ -172,6 +172,9 @@ browser.runtime.onMessage.addListener((msg, sender) => {
     case "HOTKEY_RESUME":
       return resumeRunner().then(() => ({ ok: true }));
 
+    case "HOTKEY_STOP":
+      return stopRunner().then(() => ({ ok: true }));
+
     default:
       return;
   }
@@ -279,7 +282,7 @@ async function handleStart(msg) {
     }
   }
 
-  // NEW: snapshot the tabs included in this run as "last run tabs"
+  // snapshot tabs included in this run as "last run tabs"
   await snapshotLastRunTabs();
 
   startRunner();

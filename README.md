@@ -195,3 +195,18 @@ Status text:
 
    ```text
    about:debugging#/runtime/this-firefox
+   
+## Keyboard shortcuts
+
+These work while the hopper is running on a normal webpage (not inside the popup).
+
+- **Space** – Stop (when “Stop on human input” is enabled)
+- **→ (Right Arrow)** – Jump to the next included tab immediately
+- **← (Left Arrow)** – Go back to the previously shown tab in this run
+- **P** – Pause
+- **Enter** – Resume
+- **S** – Stop (same as the Stop button)
+- **Mouse click on a tab** – Stop (when “Stop on human input” is enabled)
+
+You can also click the **Hotkeys** button in the popup to see this list inside the extension.
+

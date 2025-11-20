@@ -35,8 +35,14 @@ const els = {
   stopBtn: document.getElementById("stopBtn"),
   status: document.getElementById("status"),
 
-  modeSwitch: document.getElementById("modeSwitch")
+  modeSwitch: document.getElementById("modeSwitch"),
+
+  // NEW:
+  hotkeyHelpBtn: document.getElementById("hotkeyHelpBtn"),
+  hotkeyPanel: document.getElementById("hotkeyPanel"),
+  hotkeyCloseBtn: document.getElementById("hotkeyCloseBtn")
 };
+
 
 // state
 let currentMode = "random";
@@ -242,6 +248,16 @@ els.closeLastRunBtn.addEventListener("click", async () => {
   } catch (e) {
     console.error("CLOSE_LAST_RUN_TABS error:", e);
   }
+});
+
+// ---------- hotkey help panel ----------
+
+els.hotkeyHelpBtn.addEventListener("click", () => {
+  els.hotkeyPanel.classList.add("visible");
+});
+
+els.hotkeyCloseBtn.addEventListener("click", () => {
+  els.hotkeyPanel.classList.remove("visible");
 });
 
 // ---------- mode slider ----------

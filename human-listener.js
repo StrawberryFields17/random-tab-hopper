@@ -18,13 +18,13 @@ document.addEventListener(
         break;
 
       case "ArrowRight":
-        // Hotkey: go to next tab immediately
+        // Hotkey: go to next included tab immediately
         safeSend({ type: "HOTKEY_NEXT" });
         e.preventDefault();
         break;
 
       case "ArrowLeft":
-        // Hotkey: go back to previously shown tab
+        // Hotkey: go back to previously shown tab in this run
         safeSend({ type: "HOTKEY_PREV" });
         e.preventDefault();
         break;
@@ -38,6 +38,12 @@ document.addEventListener(
       case "Enter":
         // Hotkey: resume
         safeSend({ type: "HOTKEY_RESUME" });
+        break;
+
+      case "s":
+      case "S":
+        // Hotkey: stop
+        safeSend({ type: "HOTKEY_STOP" });
         break;
 
       default:
