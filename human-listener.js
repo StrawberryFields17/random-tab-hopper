@@ -71,6 +71,13 @@ document.addEventListener(
       case "S":
         safeSend({ type: "HOTKEY_STOP" });
         break;
+
+          case "c":
+        case "C":
+          // Close included tabs from last run
+          safeSend({ type: "CLOSE_LAST_RUN_TABS" });
+          break;
+
     }
   },
   { capture: true } // Required so websites can't swallow the arrow keys

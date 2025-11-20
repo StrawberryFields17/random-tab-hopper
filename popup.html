@@ -333,13 +333,20 @@
       padding:2px 4px;
     }
 
+    .hotkey-section-title{
+      font-weight:600;
+      margin:4px 0 1px;
+      color:var(--muted);
+      font-size:10px;
+    }
+
     .hotkey-list{
-      margin:4px 0 0;
+      margin:0 0 2px;
       padding-left:12px;
     }
 
     .hotkey-list li{
-      margin:2px 0;
+      margin:1px 0;
     }
 
     .kbd{
@@ -367,14 +374,24 @@
         <h4>Keyboard shortcuts</h4>
         <button id="hotkeyCloseBtn" class="hotkey-close">✕</button>
       </div>
+
+      <div class="hotkey-section-title">On normal pages (while running)</div>
       <ul class="hotkey-list">
         <li><span class="kbd">Space</span> Stop (if “Stop on human input” is enabled)</li>
         <li><span class="kbd">→</span> Jump to next included tab immediately</li>
-        <li><span class="kbd">←</span> Go back to previously shown tab in this run</li>
+        <li><span class="kbd">←</span> Go back to the previously shown tab in this run</li>
         <li><span class="kbd">P</span> Pause</li>
         <li><span class="kbd">Enter</span> Resume</li>
-        <li><span class="kbd">S</span> Stop (same as Stop button)</li>
-        <li><span class="kbd">Mouse click</span> Stop (if “Stop on human input” is enabled)</li>
+        <li><span class="kbd">S</span> Stop (same as the Stop button)</li>
+        <li><span class="kbd">C</span> Close all included tabs from the last run (when not running)</li>
+      </ul>
+
+      <div class="hotkey-section-title">Inside this popup</div>
+      <ul class="hotkey-list">
+        <li><span class="kbd">Enter</span> Start (when stopped) or resume (when paused)</li>
+        <li><span class="kbd">→</span> Jump to next included tab (while running)</li>
+        <li><span class="kbd">←</span> Go back to the previously shown tab (while running)</li>
+        <li><span class="kbd">C</span> Close all included tabs from the last run</li>
       </ul>
     </div>
 
@@ -487,7 +504,7 @@
       <input id="stopOnHuman" type="checkbox" checked />
     </div>
     <div class="muted">
-      Space or clicking another tab stops hopping.
+      Space or switching to another tab yourself stops hopping.
     </div>
 
     <!-- CLEANUP BUTTON NEAR THE BOTTOM -->

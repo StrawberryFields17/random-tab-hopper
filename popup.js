@@ -37,7 +37,6 @@ const els = {
 
   modeSwitch: document.getElementById("modeSwitch"),
 
-  // hotkey help
   hotkeyHelpBtn: document.getElementById("hotkeyHelpBtn"),
   hotkeyPanel: document.getElementById("hotkeyPanel"),
   hotkeyCloseBtn: document.getElementById("hotkeyCloseBtn")
@@ -421,60 +420,51 @@ els.stopBtn.addEventListener("click", async () => {
 
 // ---------- global keyboard shortcuts inside popup ----------
 
-document.addEventListener("keydown", async (e) => {
-  const key = e.key;
+document.addEventListener(
+  "keydown",
+  async (e) => {
+    const key = e.key;
 
-  // Let normal editing work in textareas / contentEditable
-  const active = document.activeElement;
-  const isTextish =
-    active &&
-    (active.tagName === "TEXTAREA" || active.isContentEditable);
-  if (isTextish) return;
-
-  try {
-    switch (key) {
-      case "Enter": {
-        // If not running, behave like Start
+    try {
+      // Enter: start when stopped, resume when paused
+      if (key === "Enter") {
         const state = await browser.runtime.sendMessage({
           type: "GET_STATE",
         });
-        if (state && state.running) {
-          // If already running, let Enter act as resume if paused
-          if (state.paused) {
-            await browser.runtime.sendMessage({ type: "RESUME" });
-            await refreshState();
-          }
-          return;
+        if (!state || !state.running) {
+          els.startBtn.click();
+        } else if (state.paused) {
+          await browser.runtime.sendMessage({ type: "RESUME" });
+          await refreshState();
         }
-        els.startBtn.click();
-        break;
+        return;
       }
 
-      case "ArrowRight": {
+      // Arrow keys in popup: same HOTKEY_NEXT/PREV as on page
+      if (key === "ArrowRight" || key === "Right") {
         e.preventDefault();
         await browser.runtime.sendMessage({ type: "HOTKEY_NEXT" });
-        break;
+        return;
       }
 
-      case "ArrowLeft": {
+      if (key === "ArrowLeft" || key === "Left") {
         e.preventDefault();
         await browser.runtime.sendMessage({ type: "HOTKEY_PREV" });
-        break;
+        return;
       }
 
-      case "Escape": {
-        // Same as "Close included tabs"
+      // C = "Close included tabs"
+      if (key === "c" || key === "C") {
+        e.preventDefault();
         await closeIncludedTabs();
-        break;
+        return;
       }
-
-      default:
-        break;
+    } catch (err) {
+      console.error("Popup key handler error:", err);
     }
-  } catch (err) {
-    console.error("Popup key handler error:", err);
-  }
-});
+  },
+  { capture: true } // ensure popup sees keys even when inputs have focus
+);
 
 // ---------- init ----------
 
