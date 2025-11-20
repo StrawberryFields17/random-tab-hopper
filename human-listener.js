@@ -12,7 +12,7 @@ document.addEventListener(
   (e) => {
     if (e.repeat) return;
 
-    // Don't capture when typing into inputs
+    // Don't capture when typing into inputs / textareas / contentEditable
     const active = document.activeElement;
     if (
       active &&
@@ -23,7 +23,6 @@ document.addEventListener(
       return;
     }
 
-    // Normalize arrow detection
     const key = e.key;
     const code = e.code;
     const kc = e.keyCode || e.which;
@@ -54,7 +53,7 @@ document.addEventListener(
     }
 
     // Other hotkeys
-    switch (e.key) {
+    switch (key) {
       case " ":
         safeSend({ type: "SPACE_STOP" });
         break;
@@ -74,5 +73,5 @@ document.addEventListener(
         break;
     }
   },
-  { capture: true } // Required so websites don't block arrow keys
+  { capture: true } // Required so websites can't swallow the arrow keys
 );

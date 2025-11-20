@@ -79,7 +79,7 @@ function setRange(on) {
   els.rangeToggle.textContent = rangeOn ? "ON" : "OFF";
   els.rangeToggle.setAttribute("aria-pressed", rangeOn ? "true" : "false");
 
-  [els.minRange, els.maxRange].forEach(r => {
+  [els.minRange, els.maxRange].forEach((r) => {
     r.classList.toggle("disabled", !rangeOn);
   });
 
@@ -110,7 +110,7 @@ function updateDualSlider(from) {
   const lo = parseFloat(minR.min);
   const hi = parseFloat(minR.max);
 
-  const leftPct  = ((minVal - lo) / (hi - lo)) * 100;
+  const leftPct = ((minVal - lo) / (hi - lo)) * 100;
   const rightPct = 100 - ((maxVal - lo) / (hi - lo)) * 100;
 
   els.trackFill.style.left = `${leftPct}%`;
@@ -123,13 +123,16 @@ function updateDualSlider(from) {
 function updateManualNote() {
   if (useSelectedTabs) {
     if (manualCount > 0) {
-      els.manualNote.textContent =
-        `Manual tab list active (${manualCount} tab${manualCount === 1 ? "" : "s"} selected).`;
+      els.manualNote.textContent = `Manual tab list active (${manualCount} tab${
+        manualCount === 1 ? "" : "s"
+      } selected).`;
     } else {
-      els.manualNote.textContent = "Manual tab list active, but no tabs selected yet.";
+      els.manualNote.textContent =
+        "Manual tab list active, but no tabs selected yet.";
     }
   } else {
-    els.manualNote.textContent = "Manual tab list disabled (using tab range).";
+    els.manualNote.textContent =
+      "Manual tab list disabled (using tab range).";
   }
 }
 
@@ -137,7 +140,10 @@ function setUseSelectedTabs(on) {
   useSelectedTabs = !!on;
   els.useListToggle.classList.toggle("on", useSelectedTabs);
   els.useListToggle.textContent = useSelectedTabs ? "ON" : "OFF";
-  els.useListToggle.setAttribute("aria-pressed", useSelectedTabs ? "true" : "false");
+  els.useListToggle.setAttribute(
+    "aria-pressed",
+    useSelectedTabs ? "true" : "false"
+  );
 
   if (useSelectedTabs) {
     els.rangeSection.classList.add("section-disabled");
@@ -148,7 +154,8 @@ function setUseSelectedTabs(on) {
     els.rangeSection.classList.remove("section-disabled");
     els.tabStart.disabled = false;
     els.tabEnd.disabled = false;
-    els.rangeNote.textContent = "Using tab range (manual tab list disabled).";
+    els.rangeNote.textContent =
+      "Using tab range (manual tab list disabled).";
   }
   updateManualNote();
 }
@@ -167,8 +174,10 @@ function updateChooserButton() {
 
 function setMode(mode) {
   currentMode = mode === "sequential" ? "sequential" : "random";
-  const options = Array.from(els.modeSwitch.querySelectorAll(".mode-option"));
-  options.forEach(opt => {
+  const options = Array.from(
+    els.modeSwitch.querySelectorAll(".mode-option")
+  );
+  options.forEach((opt) => {
     const active = opt.dataset.mode === currentMode;
     opt.classList.toggle("active", active);
   });
@@ -183,7 +192,7 @@ els.jitterRange.addEventListener("input", () => {
   updateJitterLabel();
 });
 
-["input", "change"].forEach(ev => {
+["input", "change"].forEach((ev) => {
   els.minRange.addEventListener(ev, () => {
     if (!rangeOn) setRange(true);
     updateDualSlider("min");
@@ -214,8 +223,11 @@ els.chooseTabsBtn.addEventListener("click", async () => {
     // leaving selection mode manually
     selectingTabs = false;
     updateChooserButton();
-    const res = await browser.runtime.sendMessage({ type: "STOP_SELECTION" });
-    manualCount = (res && typeof res.count === "number") ? res.count : 0;
+    const res = await browser.runtime.sendMessage({
+      type: "STOP_SELECTION",
+    });
+    manualCount =
+      res && typeof res.count === "number" ? res.count : 0;
     updateManualNote();
   }
 });
@@ -230,9 +242,11 @@ els.clearMarkersBtn.addEventListener("click", async () => {
 
 // ---------- cleanup: close included tabs (last run) ----------
 
-els.closeLastRunBtn.addEventListener("click", async () => {
+async function closeIncludedTabs() {
   try {
-    const res = await browser.runtime.sendMessage({ type: "CLOSE_LAST_RUN_TABS" });
+    const res = await browser.runtime.sendMessage({
+      type: "CLOSE_LAST_RUN_TABS",
+    });
     if (!res) return;
 
     if (res.running) {
@@ -247,7 +261,9 @@ els.closeLastRunBtn.addEventListener("click", async () => {
   } catch (e) {
     console.error("CLOSE_LAST_RUN_TABS error:", e);
   }
-});
+}
+
+els.closeLastRunBtn.addEventListener("click", closeIncludedTabs);
 
 // ---------- hotkey help panel ----------
 
@@ -292,15 +308,20 @@ async function refreshState() {
     if (lastParams.tabStart != null) els.tabStart.value = lastParams.tabStart;
     if (lastParams.tabEnd != null) els.tabEnd.value = lastParams.tabEnd;
     if (lastParams.seconds != null) els.seconds.value = lastParams.seconds;
-    if (lastParams.totalMinutes != null) els.totalMinutes.value = lastParams.totalMinutes;
+    if (lastParams.totalMinutes != null)
+      els.totalMinutes.value = lastParams.totalMinutes;
 
     if (lastParams.jitterPct != null) {
-      els.jitterRange.value = Math.round(Number(lastParams.jitterPct) * 100);
+      els.jitterRange.value = Math.round(
+        Number(lastParams.jitterPct) * 100
+      );
       updateJitterLabel();
     }
 
-    if (lastParams.rangeMin != null) els.minRange.value = lastParams.rangeMin;
-    if (lastParams.rangeMax != null) els.maxRange.value = lastParams.rangeMax;
+    if (lastParams.rangeMin != null)
+      els.minRange.value = lastParams.rangeMin;
+    if (lastParams.rangeMax != null)
+      els.maxRange.value = lastParams.rangeMax;
     updateDualSlider();
 
     const savedRangeOn = !!lastParams.rangeEnabled;
@@ -318,13 +339,17 @@ async function refreshState() {
   }
 
   // manual selection count
-  const res = await browser.runtime.sendMessage({ type: "GET_SELECTED_TABS" });
+  const res = await browser.runtime.sendMessage({
+    type: "GET_SELECTED_TABS",
+  });
   const tabs = (res && res.tabs) || [];
   manualCount = tabs.length;
   updateManualNote();
 
   // choosing state
-  const selState = await browser.runtime.sendMessage({ type: "GET_SELECTION_STATE" });
+  const selState = await browser.runtime.sendMessage({
+    type: "GET_SELECTION_STATE",
+  });
   selectingTabs = !!(selState && selState.selecting);
 
   if (selectingTabs) {
@@ -341,9 +366,16 @@ els.startBtn.addEventListener("click", async () => {
   const seconds = parseFloat(els.seconds.value);
   const totalMinutes = parseFloat(els.totalMinutes.value);
 
-  if ([tabStart, tabEnd, seconds, totalMinutes].some(Number.isNaN) ||
-      tabStart < 1 || tabEnd < tabStart || seconds <= 0 || totalMinutes <= 0) {
-    alert("Please enter valid values for tab range, seconds per tab, and total minutes.");
+  if (
+    [tabStart, tabEnd, seconds, totalMinutes].some(Number.isNaN) ||
+    tabStart < 1 ||
+    tabEnd < tabStart ||
+    seconds <= 0 ||
+    totalMinutes <= 0
+  ) {
+    alert(
+      "Please enter valid values for tab range, seconds per tab, and total minutes."
+    );
     return;
   }
 
@@ -364,7 +396,7 @@ els.startBtn.addEventListener("click", async () => {
     rangeMax,
     useSelectedTabs,
     mode: currentMode,
-    stopOnHuman: !!els.stopOnHuman.checked
+    stopOnHuman: !!els.stopOnHuman.checked,
   });
 
   selectingTabs = false;
@@ -376,7 +408,9 @@ els.startBtn.addEventListener("click", async () => {
 els.pauseResumeBtn.addEventListener("click", async () => {
   const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
   if (!state || !state.running) return;
-  await browser.runtime.sendMessage({ type: state.paused ? "RESUME" : "PAUSE" });
+  await browser.runtime.sendMessage({
+    type: state.paused ? "RESUME" : "PAUSE",
+  });
   await refreshState();
 });
 
@@ -385,30 +419,60 @@ els.stopBtn.addEventListener("click", async () => {
   await refreshState();
 });
 
-// ---------- ENTER key in popup: start when stopped ----------
+// ---------- global keyboard shortcuts inside popup ----------
 
 document.addEventListener("keydown", async (e) => {
-  if (e.key !== "Enter") return;
+  const key = e.key;
 
-  // If user is typing in an input field in the popup, don't hijack Enter
+  // Let normal editing work in textareas / contentEditable
   const active = document.activeElement;
-  if (
+  const isTextish =
     active &&
-    (active.tagName === "INPUT" ||
-      active.tagName === "TEXTAREA" ||
-      active.isContentEditable)
-  ) {
-    return;
-  }
+    (active.tagName === "TEXTAREA" || active.isContentEditable);
+  if (isTextish) return;
 
   try {
-    const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
-    if (state && state.running) return; // already running
+    switch (key) {
+      case "Enter": {
+        // If not running, behave like Start
+        const state = await browser.runtime.sendMessage({
+          type: "GET_STATE",
+        });
+        if (state && state.running) {
+          // If already running, let Enter act as resume if paused
+          if (state.paused) {
+            await browser.runtime.sendMessage({ type: "RESUME" });
+            await refreshState();
+          }
+          return;
+        }
+        els.startBtn.click();
+        break;
+      }
 
-    // Behave like clicking Start
-    els.startBtn.click();
+      case "ArrowRight": {
+        e.preventDefault();
+        await browser.runtime.sendMessage({ type: "HOTKEY_NEXT" });
+        break;
+      }
+
+      case "ArrowLeft": {
+        e.preventDefault();
+        await browser.runtime.sendMessage({ type: "HOTKEY_PREV" });
+        break;
+      }
+
+      case "Escape": {
+        // Same as "Close included tabs"
+        await closeIncludedTabs();
+        break;
+      }
+
+      default:
+        break;
+    }
   } catch (err) {
-    console.error("Enter-to-start error:", err);
+    console.error("Popup key handler error:", err);
   }
 });
 
