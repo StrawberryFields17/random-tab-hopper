@@ -13,7 +13,7 @@ document.addEventListener(
     if (e.repeat) return; // ignore held-down keys
 
     switch (e.key) {
-      case " ": // spacebar -> old behavior: stop on human input
+      case " ": // spacebar -> stop on human input (old behavior)
         safeSend({ type: "SPACE_STOP" });
         break;
 
@@ -41,7 +41,7 @@ document.addEventListener(
         break;
 
       default:
-        // Any other key counts as "human input"
+        // Any other key counts as "human input" (for optional auto-stop)
         safeSend({ type: "HUMAN_INPUT" });
         break;
     }
