@@ -36,7 +36,11 @@ let runState = {
 
   // human input stop
   stopOnHuman: true,
-  _activatingByCode: false
+  _activatingByCode: false,
+
+  // history of visited tabs (for left/right keys)
+  history: [],
+  historyIndex: -1
 };
 
 let selectedTabIds = new Set();
@@ -45,7 +49,7 @@ let selectionOriginTabId = null;
 
 let rangeMarkedIds = new Set();
 
-// NEW: tabs that were part of the last run's pool
+// tabs that were part of the last run's pool
 let lastRunTabIds = new Set();
 
 // ---------------- GREEN MARKER HELPERS ----------------
@@ -73,7 +77,7 @@ async function clearRangeMarks() {
   rangeMarkedIds.clear();
 }
 
-// Remove all markers from every tab (including very old ones)
+// Remove all markers from every tab (including old ones)
 async function clearAllMarkers() {
   const allTabs = await browser.tabs.query({});
   for (const t of allTabs) {
@@ -83,8 +87,7 @@ async function clearAllMarkers() {
   rangeMarkedIds.clear();
   selectionMode = false;
   selectionOriginTabId = null;
-  // Note: we DO NOT clear lastRunTabIds here, because
-  // the user might still want to close "tabs from last run"
+  // lastRunTabIds is kept — user may still want to close those tabs
 }
 
 // ---------------- STATE BROADCAST ----------------
@@ -100,8 +103,12 @@ function broadcastStateChange() {
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || typeof msg.type !== "string") return;
 
-  if ((msg.type === "SPACE_STOP" || msg.type === "HUMAN_INPUT") &&
-      runState.running && runState.stopOnHuman) {
+  // Space / general human input can stop the run
+  if (
+    (msg.type === "SPACE_STOP" || msg.type === "HUMAN_INPUT") &&
+    runState.running &&
+    runState.stopOnHuman
+  ) {
     return stopRunner().then(() => ({ ok: true }));
   }
 
@@ -148,9 +155,22 @@ browser.runtime.onMessage.addListener((msg, sender) => {
         originTabId: selectionOriginTabId
       });
 
-    // NEW: close all tabs that were in the last run
+    // Close tabs of last run
     case "CLOSE_LAST_RUN_TABS":
       return closeLastRunTabs();
+
+    // Hotkeys
+    case "HOTKEY_NEXT":
+      return handleHotkeyNext();
+
+    case "HOTKEY_PREV":
+      return handleHotkeyPrev();
+
+    case "HOTKEY_PAUSE":
+      return pauseRunner().then(() => ({ ok: true }));
+
+    case "HOTKEY_RESUME":
+      return resumeRunner().then(() => ({ ok: true }));
 
     default:
       return;
@@ -235,6 +255,10 @@ async function handleStart(msg) {
   const win = await browser.windows.getCurrent();
   runState.windowId = win.id;
 
+  // reset history for this run
+  runState.history = [];
+  runState.historyIndex = -1;
+
   // Store persistently for popup restore
   await browser.storage.local.set({ lastParams: msg });
 
@@ -275,9 +299,9 @@ async function snapshotLastRunTabs() {
 
   if (runState.useSelectedTabs && selectedTabIds.size > 0) {
     const set = new Set(selectedTabIds);
-    list = allTabs.filter(t => set.has(t.id));
+    list = allTabs.filter((t) => set.has(t.id));
   } else {
-    list = allTabs.filter(t => {
+    list = allTabs.filter((t) => {
       const idx = t.index + 1;
       return idx >= runState.tabStart && idx <= runState.tabEnd;
     });
@@ -316,8 +340,8 @@ async function getSelectedTabsMeta() {
   const all = await browser.tabs.query({});
   const idSet = new Set(selectedTabIds);
   return all
-    .filter(t => idSet.has(t.id))
-    .map(t => ({
+    .filter((t) => idSet.has(t.id))
+    .map((t) => ({
       id: t.id,
       title: t.title,
       index1: t.index + 1,
@@ -386,7 +410,9 @@ function computeDelayMs() {
 
   if (runState.rangeEnabled) {
     const r = Math.random() < 0.5 ? -1 : 1;
-    const mag = Math.random() * (runState.rangeMax - runState.rangeMin) + runState.rangeMin;
+    const mag =
+      Math.random() * (runState.rangeMax - runState.rangeMin) +
+      runState.rangeMin;
     return Math.max(50, (base + r * mag) * 1000);
   }
 
@@ -427,7 +453,8 @@ function scheduleNextHop(delayMs) {
 
 async function hopOnce() {
   try {
-    if (!runState.running || runState.paused || runState.windowId == null) return;
+    if (!runState.running || runState.paused || runState.windowId == null)
+      return;
 
     const tabs = await browser.tabs.query({ windowId: runState.windowId });
     if (!tabs.length) return;
@@ -437,9 +464,9 @@ async function hopOnce() {
     let list;
     if (runState.useSelectedTabs && selectedTabIds.size > 0) {
       const set = new Set(selectedTabIds);
-      list = tabs.filter(t => set.has(t.id));
+      list = tabs.filter((t) => set.has(t.id));
     } else {
-      list = tabs.filter(t => {
+      list = tabs.filter((t) => {
         const idx = t.index + 1;
         return idx >= runState.tabStart && idx <= runState.tabEnd;
       });
@@ -452,21 +479,102 @@ async function hopOnce() {
       next = list[runState.nextSeqPos];
       runState.nextSeqPos = (runState.nextSeqPos + 1) % list.length;
     } else {
+      // random mode
       next = list[Math.floor(Math.random() * list.length)];
     }
 
-    await browser.windows.update(runState.windowId, { focused: true });
+    await activateTab(next.id, true);
+
+    // update history
+    runState.history.push(next.id);
+    if (runState.history.length > 200) {
+      runState.history.shift();
+    }
+    runState.historyIndex = runState.history.length - 1;
+  } catch (e) {
+    console.error("hopOnce error:", e);
+  }
+}
+
+async function activateTab(tabId, focusWindow) {
+  try {
+    const tab = await browser.tabs.get(tabId);
+    const winId = tab.windowId;
+
+    if (focusWindow && winId != null) {
+      await browser.windows.update(winId, { focused: true });
+    }
 
     runState._activatingByCode = true;
     try {
-      await browser.tabs.update(next.id, { active: true });
+      await browser.tabs.update(tabId, { active: true });
     } finally {
       setTimeout(() => {
         runState._activatingByCode = false;
       }, 120);
     }
   } catch (e) {
-    console.error("hopOnce error:", e);
+    console.error("activateTab error:", e);
+  }
+}
+
+// ---------------- HOTKEY HANDLERS ----------------
+
+async function handleHotkeyNext() {
+  if (!runState.running || runState.paused) return { ok: false };
+
+  if (runState.nextTimeoutId) {
+    clearTimeout(runState.nextTimeoutId);
+    runState.nextTimeoutId = null;
+  }
+
+  await hopOnce();
+
+  if (runState.running && !runState.paused) {
+    const r = Math.max(0, runState.stopDeadline - Date.now());
+    if (r <= 0) {
+      await stopRunner();
+    } else {
+      scheduleNextHop(Math.min(r, computeDelayMs()));
+    }
+  }
+  return { ok: true };
+}
+
+async function handleHotkeyPrev() {
+  if (!runState.running) return { ok: false };
+
+  if (runState.history.length === 0) return { ok: false };
+
+  // Move back in history if possible
+  let newIndex = runState.historyIndex - 1;
+  if (newIndex < 0) newIndex = 0;
+  if (newIndex === runState.historyIndex) return { ok: false };
+
+  const tabId = runState.history[newIndex];
+
+  try {
+    await activateTab(tabId, true);
+    runState.historyIndex = newIndex;
+
+    if (runState.nextTimeoutId) {
+      clearTimeout(runState.nextTimeoutId);
+      runState.nextTimeoutId = null;
+    }
+
+    if (runState.running && !runState.paused) {
+      const r = Math.max(0, runState.stopDeadline - Date.now());
+      if (r <= 0) {
+        await stopRunner();
+      } else {
+        scheduleNextHop(Math.min(r, computeDelayMs()));
+      }
+    }
+
+    return { ok: true };
+  } catch (e) {
+    console.error("handleHotkeyPrev error:", e);
+    return { ok: false };
   }
 }
 

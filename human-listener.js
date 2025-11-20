@@ -1,24 +1,59 @@
 // human-listener.js
-(function () {
-  let sentRecently = false;
+// Listens for keyboard / mouse input and sends signals to the background script.
 
-  function ping() {
-    if (sentRecently) return;
-    sentRecently = true;
-    try {
-      browser.runtime.sendMessage({ type: "HUMAN_INPUT" });
-    } catch (e) {}
-    // throttle pings (avoid spamming background)
-    setTimeout(() => { sentRecently = false; }, 500);
-  }
+function safeSend(msg) {
+  try {
+    browser.runtime.sendMessage(msg).catch(() => {});
+  } catch (_) {}
+}
 
-  const events = [
-    "keydown", "keyup", "keypress",
-    "mousedown", "mouseup", "click", "dblclick", "contextmenu",
-    "pointerdown", "pointerup",
-    "wheel",
-    "touchstart", "touchend"
-  ];
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.repeat) return; // ignore held-down keys
 
-  events.forEach(ev => window.addEventListener(ev, ping, { capture: true, passive: true }));
-})();
+    switch (e.key) {
+      case " ": // spacebar -> old behavior: stop on human input
+        safeSend({ type: "SPACE_STOP" });
+        break;
+
+      case "ArrowRight":
+        // Hotkey: go to next tab immediately
+        safeSend({ type: "HOTKEY_NEXT" });
+        e.preventDefault();
+        break;
+
+      case "ArrowLeft":
+        // Hotkey: go back to previously shown tab
+        safeSend({ type: "HOTKEY_PREV" });
+        e.preventDefault();
+        break;
+
+      case "p":
+      case "P":
+        // Hotkey: pause
+        safeSend({ type: "HOTKEY_PAUSE" });
+        break;
+
+      case "Enter":
+        // Hotkey: resume
+        safeSend({ type: "HOTKEY_RESUME" });
+        break;
+
+      default:
+        // Any other key counts as "human input"
+        safeSend({ type: "HUMAN_INPUT" });
+        break;
+    }
+  },
+  true
+);
+
+// Mouse clicks still count as human input
+document.addEventListener(
+  "mousedown",
+  () => {
+    safeSend({ type: "HUMAN_INPUT" });
+  },
+  true
+);
