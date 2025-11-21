@@ -43,6 +43,16 @@ let runState = {
   historyIndex: -1
 };
 
+/**
+ * History limits
+ */
+// How many steps back the left-arrow can go from the most recent tab
+const MAX_HISTORY_BACK_STEPS = 10;
+
+// Hard cap for total stored history entries (just for memory safety)
+const MAX_HISTORY_ENTRIES = 200;
+
+
 let selectedTabIds = new Set();
 let selectionMode = false;
 let selectionOriginTabId = null;
@@ -488,11 +498,25 @@ async function hopOnce() {
 
     await activateTab(next.id, true);
 
-    // update history
+    // If we previously went backwards in history, drop all "forward" entries.
+    // This makes history behave like a browser: after going back and then
+    // visiting a new tab, the old forward path is discarded.
+    if (
+      runState.historyIndex >= 0 &&
+      runState.historyIndex < runState.history.length - 1
+    ) {
+      runState.history = runState.history.slice(0, runState.historyIndex + 1);
+    }
+
+    // Append this tab to history
     runState.history.push(next.id);
-    if (runState.history.length > 200) {
+
+    // Hard cap total history length
+    if (runState.history.length > MAX_HISTORY_ENTRIES) {
       runState.history.shift();
     }
+
+    // We are now at the end of the history
     runState.historyIndex = runState.history.length - 1;
   } catch (e) {
     console.error("hopOnce error:", e);
@@ -523,7 +547,7 @@ async function activateTab(tabId, focusWindow) {
 
 // ---------------- HOTKEY HANDLERS ----------------
 
-async function handleHotkeyNext() {
+async async function handleHotkeyNext() {
   if (!runState.running || runState.paused) return { ok: false };
 
   if (runState.nextTimeoutId) {
@@ -546,13 +570,29 @@ async function handleHotkeyNext() {
 
 async function handleHotkeyPrev() {
   if (!runState.running) return { ok: false };
-
   if (runState.history.length === 0) return { ok: false };
 
-  // Move back in history if possible
+  const len = runState.history.length;
+
+  // Make sure historyIndex is sane; if not, snap it to the latest tab
+  if (runState.historyIndex < 0 || runState.historyIndex >= len) {
+    runState.historyIndex = len - 1;
+  }
+
+  // You can go back at most MAX_HISTORY_BACK_STEPS from the *latest* tab
+  // (rightmost history entry).
+  const minIndex = Math.max(0, len - 1 - MAX_HISTORY_BACK_STEPS);
+
+  // Already as far back as allowed? Then left-arrow does nothing.
+  if (runState.historyIndex <= minIndex) {
+    return { ok: false };
+  }
+
+  // Step one position back, but never past minIndex
   let newIndex = runState.historyIndex - 1;
-  if (newIndex < 0) newIndex = 0;
-  if (newIndex === runState.historyIndex) return { ok: false };
+  if (newIndex < minIndex) {
+    newIndex = minIndex;
+  }
 
   const tabId = runState.history[newIndex];
 
