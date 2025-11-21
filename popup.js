@@ -35,6 +35,9 @@ const els = {
 
   clearMarkersBtn: document.getElementById("clearMarkersBtn"),
 
+  // big red button "Close included tabs"
+  closeLastRunBtn: document.getElementById("closeLastRunBtn"),
+
   hotkeyHelpBtn: document.getElementById("hotkeyHelpBtn"),
   hotkeyPanel: document.getElementById("hotkeyPanel"),
   hotkeyCloseBtn: document.getElementById("hotkeyCloseBtn"),
@@ -52,9 +55,7 @@ let manualCount = 0;
 // ---------- helpers ----------
 
 function updateJitterLabel() {
-  const pct = Math.round(
-    (parseInt(els.jitterRange.value, 10) || 0) * 1.0
-  );
+  const pct = Math.round((parseInt(els.jitterRange.value, 10) || 0) * 1.0);
   els.jitterValue.textContent = `${pct}%`;
 }
 
@@ -127,6 +128,33 @@ function updateChooserButton() {
     : "Choose tabs…";
 }
 
+// ---------- close included tabs (last run) ----------
+
+async function closeIncludedTabs() {
+  try {
+    const res = await browser.runtime.sendMessage({
+      type: "CLOSE_LAST_RUN_TABS",
+    });
+    if (!res) return;
+
+    if (res.running) {
+      alert("Stop the current run before closing tabs from the last run.");
+      return;
+    }
+    if (!res.closed) {
+      alert("No tabs from the last run to close.");
+      return;
+    }
+    // Tabs closed successfully; user will see them disappear
+  } catch (e) {
+    console.error("CLOSE_LAST_RUN_TABS error:", e);
+  }
+}
+
+if (els.closeLastRunBtn) {
+  els.closeLastRunBtn.addEventListener("click", closeIncludedTabs);
+}
+
 // ---------- hotkey help panel ----------
 
 els.hotkeyHelpBtn.addEventListener("click", () => {
@@ -161,16 +189,12 @@ async function refreshState() {
       els.totalMinutes.value = lastParams.totalMinutes;
 
     if (lastParams.jitterPct != null) {
-      els.jitterRange.value = Math.round(
-        Number(lastParams.jitterPct) * 100
-      );
+      els.jitterRange.value = Math.round(Number(lastParams.jitterPct) * 100);
       updateJitterLabel();
     }
 
-    if (lastParams.rangeMin != null)
-      els.minRange.value = lastParams.rangeMin;
-    if (lastParams.rangeMax != null)
-      els.maxRange.value = lastParams.rangeMax;
+    if (lastParams.rangeMin != null) els.minRange.value = lastParams.rangeMin;
+    if (lastParams.rangeMax != null) els.maxRange.value = lastParams.rangeMax;
     updateDualSlider();
 
     const savedRangeOn = !!lastParams.rangeEnabled;
@@ -343,30 +367,28 @@ document.addEventListener(
         const state = await browser.runtime.sendMessage({
           type: "GET_STATE",
         });
+
         if (!state || !state.running) {
           // same as clicking Start
           els.startBtn.click();
         } else if (state.paused) {
-          // resume current run
-          await browser.runtime.sendMessage({ type: "HOTKEY_RESUME" });
-          await refreshState();
+          // same as clicking Pause/Resume button
+          els.pauseResumeBtn.click();
         }
         return;
       }
 
-      // P = pause run (only makes sense when running)
+      // P = pause/resume run (same as clicking Pause/Resume)
       if (key === "p" || key === "P") {
         e.preventDefault();
-        await browser.runtime.sendMessage({ type: "HOTKEY_PAUSE" });
-        await refreshState();
+        els.pauseResumeBtn.click();
         return;
       }
 
-      // S = stop run
+      // S = stop run (same as clicking Stop)
       if (key === "s" || key === "S") {
         e.preventDefault();
-        await browser.runtime.sendMessage({ type: "HOTKEY_STOP" });
-        await refreshState();
+        els.stopBtn.click();
         return;
       }
 
@@ -386,7 +408,7 @@ document.addEventListener(
       // C = "Close included tabs" from last run
       if (key === "c" || key === "C") {
         e.preventDefault();
-        await browser.runtime.sendMessage({ type: "CLOSE_LAST_RUN_TABS" });
+        await closeIncludedTabs();
         return;
       }
     } catch (err) {
