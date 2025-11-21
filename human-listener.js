@@ -1,84 +1,109 @@
-// human-listener.js
-// Listens for keyboard input and sends signals to the background script.
+// human-listener.js — content script for page hotkeys
 
-function safeSend(msg) {
-  try {
-    browser.runtime.sendMessage(msg).catch(() => {});
-  } catch (_) {}
-}
+(function () {
+  if (window.__random_tab_hopper_listener_installed) return;
+  window.__random_tab_hopper_listener_installed = true;
 
-document.addEventListener(
-  "keydown",
-  (e) => {
-    if (e.repeat) return;
+  function safeSend(message) {
+    try {
+      browser.runtime.sendMessage(message);
+    } catch (e) {
+      console.error("Random Tab Hopper sendMessage failed:", e);
+    }
+  }
 
-    // Don't capture when typing into inputs / textareas / contentEditable
-    const active = document.activeElement;
-    if (
-      active &&
-      (active.tagName === "INPUT" ||
-        active.tagName === "TEXTAREA" ||
-        active.isContentEditable)
-    ) {
-      return;
+  function isEditableElement(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    const type = (el.type || "").toLowerCase();
+
+    if (el.isContentEditable) return true;
+
+    if (tag === "INPUT") {
+      const blocked = [
+        "text",
+        "search",
+        "email",
+        "url",
+        "password",
+        "number",
+        "tel",
+        "date",
+        "datetime-local",
+        "month",
+        "time",
+        "week",
+      ];
+      return blocked.includes(type);
     }
 
-    const key = e.key;
-    const code = e.code;
-    const kc = e.keyCode || e.which;
+    if (tag === "TEXTAREA" || tag === "SELECT") return true;
+    return false;
+  }
 
-    const isRight =
-      key === "ArrowRight" ||
-      key === "Right" ||
-      code === "ArrowRight" ||
-      kc === 39;
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      const key = e.key;
+      const target = e.target;
 
-    const isLeft =
-      key === "ArrowLeft" ||
-      key === "Left" ||
-      code === "ArrowLeft" ||
-      kc === 37;
+      // ignore with modifier keys
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
 
-    // Arrow keys
-    if (isRight) {
-      safeSend({ type: "HOTKEY_NEXT" });
-      e.preventDefault();
-      return;
-    }
+      // ignore when typing in inputs/textareas/contenteditable
+      if (isEditableElement(target)) return;
 
-    if (isLeft) {
-      safeSend({ type: "HOTKEY_PREV" });
-      e.preventDefault();
-      return;
-    }
+      switch (key) {
+        case "ArrowRight":
+        case "Right":
+          e.preventDefault();
+          safeSend({ type: "HOTKEY_NEXT" });
+          break;
 
-    // Other hotkeys
-    switch (key) {
-      case " ":
-        safeSend({ type: "SPACE_STOP" });
-        break;
+        case "ArrowLeft":
+        case "Left":
+          e.preventDefault();
+          safeSend({ type: "HOTKEY_PREV" });
+          break;
 
-      case "p":
-      case "P":
-        safeSend({ type: "HOTKEY_PAUSE" });
-        break;
+        // S = stop
+        case "s":
+        case "S":
+          e.preventDefault();
+          safeSend({ type: "HOTKEY_STOP" });
+          break;
 
-      case "Enter":
-        safeSend({ type: "HOTKEY_RESUME" });
-        break;
+        // P = toggle pause/resume
+        case "p":
+        case "P":
+          e.preventDefault();
+          safeSend({ type: "HOTKEY_TOGGLE_PAUSE" });
+          break;
 
-      case "s":
-      case "S":
-        safeSend({ type: "HOTKEY_STOP" });
-        break;
+        // Enter:
+        // - if stopped: start with last settings
+        // - if paused: resume
+        case "Enter":
+          e.preventDefault();
+          safeSend({ type: "HOTKEY_ENTER" });
+          break;
 
-          case "c":
+        // C = close included tabs from last run
+        case "c":
         case "C":
-          // Close included tabs from last run
+          e.preventDefault();
           safeSend({ type: "CLOSE_LAST_RUN_TABS" });
           break;
 
-    }
-  },
-  { capture: true } // Required so websites can't swallow the arrow keys
-);
+        // Space: generic "human input" stop, if enabled
+        case " ":
+          safeSend({ type: "SPACE_STOP" });
+          break;
+
+        default:
+          break;
+      }
+    },
+    { capture: true }
+  );
+})();

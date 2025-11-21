@@ -35,7 +35,6 @@ const els = {
 
   clearMarkersBtn: document.getElementById("clearMarkersBtn"),
 
-  // big red button "Close included tabs"
   closeLastRunBtn: document.getElementById("closeLastRunBtn"),
 
   hotkeyHelpBtn: document.getElementById("hotkeyHelpBtn"),
@@ -137,15 +136,11 @@ async function closeIncludedTabs() {
     });
     if (!res) return;
 
-    if (res.running) {
-      alert("Stop the current run before closing tabs from the last run.");
-      return;
-    }
     if (!res.closed) {
       alert("No tabs from the last run to close.");
       return;
     }
-    // Tabs closed successfully; user will see them disappear
+    // tabs closed; nothing else to do
   } catch (e) {
     console.error("CLOSE_LAST_RUN_TABS error:", e);
   }
@@ -213,7 +208,6 @@ async function refreshState() {
     }
   }
 
-  // manual selection count
   const res = await browser.runtime.sendMessage({
     type: "GET_SELECTED_TABS",
   });
@@ -221,7 +215,6 @@ async function refreshState() {
   manualCount = tabs.length;
   updateManualNote();
 
-  // choosing state
   const selState = await browser.runtime.sendMessage({
     type: "GET_SELECTION_STATE",
   });
@@ -369,23 +362,21 @@ document.addEventListener(
         });
 
         if (!state || !state.running) {
-          // same as clicking Start
           els.startBtn.click();
         } else if (state.paused) {
-          // same as clicking Pause/Resume button
           els.pauseResumeBtn.click();
         }
         return;
       }
 
-      // P = pause/resume run (same as clicking Pause/Resume)
+      // P = pause/resume (same as clicking Pause/Resume)
       if (key === "p" || key === "P") {
         e.preventDefault();
         els.pauseResumeBtn.click();
         return;
       }
 
-      // S = stop run (same as clicking Stop)
+      // S = stop (same as clicking Stop)
       if (key === "s" || key === "S") {
         e.preventDefault();
         els.stopBtn.click();
@@ -415,7 +406,7 @@ document.addEventListener(
       console.error("Popup key handler error:", err);
     }
   },
-  { capture: true } // ensure popup sees keys even when inputs have focus
+  { capture: true }
 );
 
 // ---------- init ----------

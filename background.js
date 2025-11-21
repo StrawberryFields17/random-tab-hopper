@@ -43,31 +43,25 @@ let runState = {
   historyIndex: -1,
 };
 
-/**
- * History limits
- */
-// How many steps back the left-arrow can go from the most recent tab
+// History limits
 const MAX_HISTORY_BACK_STEPS = 10;
-
-// Hard cap for total stored history entries (just for memory safety)
 const MAX_HISTORY_ENTRIES = 200;
 
+// selection / markers
 let selectedTabIds = new Set();
 let selectionMode = false;
 let selectionOriginTabId = null;
 
 let rangeMarkedIds = new Set();
-
-// tabs that were part of the last run's pool
 let lastRunTabIds = new Set();
 
-// ---------------- GREEN MARKER HELPERS ----------------
+// ---------- marker helpers ----------
 
 async function markTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "MARK_TAB" });
   } catch (_) {
-    // may fail on about: or special pages; ignore
+    // may fail on about: or restricted pages
   }
 }
 
@@ -75,7 +69,7 @@ async function unmarkTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "UNMARK_TAB" });
   } catch (_) {
-    // may fail on about: or special pages; ignore
+    // may fail on about: or restricted pages
   }
 }
 
@@ -87,7 +81,16 @@ async function clearRangeMarks() {
   rangeMarkedIds.clear();
 }
 
-// ---------------- STATE BROADCAST ----------------
+async function clearAllMarkers() {
+  const tabs = await browser.tabs.query({});
+  for (const t of tabs) {
+    await unmarkTabVisual(t.id);
+  }
+  selectedTabIds.clear();
+  rangeMarkedIds.clear();
+}
+
+// ---------- state broadcast ----------
 
 function broadcastStateChange() {
   const { running, paused, windowId, stopDeadline, remainingMs } = runState;
@@ -101,7 +104,7 @@ function broadcastStateChange() {
   });
 }
 
-// ---------------- TIMING ----------------
+// ---------- timing ----------
 
 function computeDelayMs() {
   const base = runState.seconds;
@@ -149,7 +152,7 @@ function scheduleNextHop(delayMs) {
   }, d);
 }
 
-// ---------------- HOP LOGIC ----------------
+// ---------- hop logic ----------
 
 async function hopOnce() {
   try {
@@ -176,20 +179,17 @@ async function hopOnce() {
 
     let next;
     if (runState.mode === "sequential") {
-      // ensure nextSeqPos is in range
       if (runState.nextSeqPos < 0 || runState.nextSeqPos >= list.length) {
         runState.nextSeqPos = 0;
       }
       next = list[runState.nextSeqPos];
       runState.nextSeqPos = (runState.nextSeqPos + 1) % list.length;
     } else {
-      // random
       next = list[Math.floor(Math.random() * list.length)];
     }
 
     if (!next) return;
 
-    // mark that we are activating by code to avoid stop-on-human triggering
     runState._activatingByCode = true;
     try {
       await browser.tabs.update(next.id, { active: true });
@@ -198,7 +198,7 @@ async function hopOnce() {
       runState._activatingByCode = false;
     }
 
-    // If we previously went backwards in history, drop all "forward" entries.
+    // history management: trim forward if we had gone back
     if (
       runState.historyIndex >= 0 &&
       runState.historyIndex < runState.history.length - 1
@@ -206,22 +206,17 @@ async function hopOnce() {
       runState.history = runState.history.slice(0, runState.historyIndex + 1);
     }
 
-    // Append this tab to history
     runState.history.push(next.id);
-
-    // Hard cap total history length
     if (runState.history.length > MAX_HISTORY_ENTRIES) {
       runState.history.shift();
     }
-
-    // We are now at the end of the history
     runState.historyIndex = runState.history.length - 1;
   } catch (e) {
     console.error("hopOnce error:", e);
   }
 }
 
-// ---------------- RUNNER CONTROL ----------------
+// ---------- runner control ----------
 
 function startRunner() {
   if (runState.running) return;
@@ -241,7 +236,7 @@ async function stopRunner() {
     runState.nextTimeoutId = null;
   }
 
-  // auto-clear range markers when stopping a range run
+  // auto-clear range markers when stopping range-mode run
   if (!runState.useSelectedTabs) {
     await clearRangeMarks();
   }
@@ -277,12 +272,11 @@ async function resumeRunner() {
   scheduleNextHop(0);
 }
 
-// ---------------- SELECTION MODE ----------------
+// ---------- selection mode ----------
 
 async function handleStartSelection() {
   selectionMode = true;
 
-  // ALWAYS add and mark the current active tab as soon as choosing starts
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs.length > 0) {
@@ -304,6 +298,10 @@ async function handleStopSelection() {
 }
 
 async function handleGetSelectedTabs() {
+  if (runState.windowId == null) {
+    return { tabs: [] };
+  }
+
   const tabs = await browser.tabs.query({ windowId: runState.windowId });
   tabs.sort((a, b) => a.index - b.index);
   const set = new Set(selectedTabIds);
@@ -311,17 +309,14 @@ async function handleGetSelectedTabs() {
   return { tabs: list };
 }
 
-// Snapshot which tabs are part of this run
 async function snapshotLastRunTabs() {
   lastRunTabIds.clear();
-
   if (runState.windowId == null) return;
 
   const allTabs = await browser.tabs.query({ windowId: runState.windowId });
   allTabs.sort((a, b) => a.index - b.index);
 
   let list;
-
   if (runState.useSelectedTabs && selectedTabIds.size > 0) {
     const set = new Set(selectedTabIds);
     list = allTabs.filter((t) => set.has(t.id));
@@ -337,7 +332,7 @@ async function snapshotLastRunTabs() {
   }
 }
 
-// ---------------- GET STATE ----------------
+// ---------- state / start ----------
 
 async function handleGetState() {
   const last = await browser.storage.local.get("lastParams");
@@ -350,8 +345,6 @@ async function handleGetState() {
     lastParams: last.lastParams || null,
   };
 }
-
-// ---------------- START HOP RUN ----------------
 
 async function handleStart(msg) {
   selectionMode = false;
@@ -389,13 +382,13 @@ async function handleStart(msg) {
   runState.history = [];
   runState.historyIndex = -1;
 
-  // Store persistently for popup restore
+  // persist settings
   await browser.storage.local.set({ lastParams: msg });
 
-  // Clear old range marks
+  // clear old range marks
   await clearRangeMarks();
 
-  // Mark range tabs with green orb if using range mode
+  // mark range if using range mode
   if (!runState.useSelectedTabs) {
     const allTabs = await browser.tabs.query({ windowId: runState.windowId });
     allTabs.sort((a, b) => a.index - b.index);
@@ -409,14 +402,12 @@ async function handleStart(msg) {
     }
   }
 
-  // snapshot tabs included in this run as "last run tabs"
   await snapshotLastRunTabs();
-
   startRunner();
   return { ok: true };
 }
 
-// ---------------- HOTKEYS: NEXT / PREV / SPACE / CLOSE_LAST_RUN_TABS ----------------
+// ---------- hotkeys: next / prev / enter / pause / stop / close ----------
 
 async function handleHotkeyNext() {
   if (!runState.running || runState.paused) return { ok: false };
@@ -445,20 +436,16 @@ async function handleHotkeyPrev() {
 
   const len = runState.history.length;
 
-  // Make sure historyIndex is sane; if not, snap it to the latest tab
   if (runState.historyIndex < 0 || runState.historyIndex >= len) {
     runState.historyIndex = len - 1;
   }
 
-  // You can go back at most MAX_HISTORY_BACK_STEPS from the *latest* tab
   const minIndex = Math.max(0, len - 1 - MAX_HISTORY_BACK_STEPS);
 
-  // Already as far back as allowed? Then left-arrow does nothing.
   if (runState.historyIndex <= minIndex) {
     return { ok: false };
   }
 
-  // Step one position back, but never past minIndex
   let newIndex = runState.historyIndex - 1;
   if (newIndex < minIndex) {
     newIndex = minIndex;
@@ -479,7 +466,6 @@ async function handleHotkeyPrev() {
 
     runState.historyIndex = newIndex;
 
-    // Cancel any scheduled hop and reschedule
     if (runState.nextTimeoutId) {
       clearTimeout(runState.nextTimeoutId);
       runState.nextTimeoutId = null;
@@ -503,7 +489,7 @@ async function handleHotkeyPrev() {
 
 async function closeLastRunTabs() {
   const ids = [...lastRunTabIds];
-  if (!ids.length) return { closed: 0, running: runState.running };
+  if (!ids.length) return { closed: 0 };
 
   const allTabs = await browser.tabs.query({});
   const idSet = new Set(ids);
@@ -515,21 +501,59 @@ async function closeLastRunTabs() {
         await browser.tabs.remove(t.id);
         closed++;
       } catch (_) {
-        // tab might already be gone; ignore
+        // tab might already be gone
       }
     }
   }
 
   lastRunTabIds.clear();
-  return { closed, running: runState.running };
+  return { closed };
 }
 
-// ---------------- MESSAGE HANDLER ----------------
+// Extra hotkeys for Enter / Pause toggle / Stop using last settings
+
+async function handleHotkeyEnter() {
+  if (!runState.running) {
+    const stored = await browser.storage.local.get("lastParams");
+    const lastParams = stored.lastParams;
+    if (!lastParams) {
+      console.warn("HOTKEY_ENTER: no lastParams saved; cannot start");
+      return { ok: false, reason: "NO_LAST_PARAMS" };
+    }
+    return handleStart(lastParams);
+  }
+
+  if (runState.paused) {
+    await resumeRunner();
+    return { ok: true, action: "RESUMED" };
+  }
+
+  return { ok: false, reason: "ALREADY_RUNNING" };
+}
+
+async function handleHotkeyTogglePause() {
+  if (!runState.running) {
+    return { ok: false, reason: "NOT_RUNNING" };
+  }
+  if (runState.paused) {
+    await resumeRunner();
+    return { ok: true, action: "RESUMED" };
+  } else {
+    await pauseRunner();
+    return { ok: true, action: "PAUSED" };
+  }
+}
+
+async function handleHotkeyStop() {
+  await stopRunner();
+  return { ok: true };
+}
+
+// ---------- message handler ----------
 
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || typeof msg.type !== "string") return;
 
-  // Space / general human input can stop the run
   if (
     (msg.type === "SPACE_STOP" || msg.type === "HUMAN_INPUT") &&
     runState.running &&
@@ -587,6 +611,15 @@ browser.runtime.onMessage.addListener((msg, sender) => {
     case "HOTKEY_PREV":
       return handleHotkeyPrev();
 
+    case "HOTKEY_ENTER":
+      return handleHotkeyEnter();
+
+    case "HOTKEY_TOGGLE_PAUSE":
+      return handleHotkeyTogglePause();
+
+    case "HOTKEY_STOP":
+      return handleHotkeyStop();
+
     case "CLOSE_LAST_RUN_TABS":
       return closeLastRunTabs();
 
@@ -595,23 +628,12 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   }
 });
 
-// clear all markers helper for "Clear all markers" button
-async function clearAllMarkers() {
-  const tabs = await browser.tabs.query({});
-  for (const t of tabs) {
-    await unmarkTabVisual(t.id);
-  }
-  selectedTabIds.clear();
-  rangeMarkedIds.clear();
-}
-
-// ---------------- TAB ACTIVATION WATCHER ----------------
+// ---------- tab activation watcher ----------
 
 browser.tabs.onActivated.addListener(async (activeInfo) => {
   const id = activeInfo.tabId;
 
   if (selectionMode) {
-    // toggle inclusion while choosing tabs
     if (selectedTabIds.has(id)) {
       selectedTabIds.delete(id);
       await unmarkTabVisual(id);
@@ -622,7 +644,6 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
     return;
   }
 
-  // human-triggered activities can optionally stop
   if (!runState._activatingByCode && runState.running && runState.stopOnHuman) {
     await stopRunner();
   }
