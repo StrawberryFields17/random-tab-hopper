@@ -344,11 +344,29 @@ document.addEventListener(
           type: "GET_STATE",
         });
         if (!state || !state.running) {
+          // same as clicking Start
           els.startBtn.click();
         } else if (state.paused) {
-          await browser.runtime.sendMessage({ type: "RESUME" });
+          // resume current run
+          await browser.runtime.sendMessage({ type: "HOTKEY_RESUME" });
           await refreshState();
         }
+        return;
+      }
+
+      // P = pause run (only makes sense when running)
+      if (key === "p" || key === "P") {
+        e.preventDefault();
+        await browser.runtime.sendMessage({ type: "HOTKEY_PAUSE" });
+        await refreshState();
+        return;
+      }
+
+      // S = stop run
+      if (key === "s" || key === "S") {
+        e.preventDefault();
+        await browser.runtime.sendMessage({ type: "HOTKEY_STOP" });
+        await refreshState();
         return;
       }
 
@@ -365,7 +383,7 @@ document.addEventListener(
         return;
       }
 
-      // C = "Close included tabs"
+      // C = "Close included tabs" from last run
       if (key === "c" || key === "C") {
         e.preventDefault();
         await browser.runtime.sendMessage({ type: "CLOSE_LAST_RUN_TABS" });
@@ -375,7 +393,7 @@ document.addEventListener(
       console.error("Popup key handler error:", err);
     }
   },
-  { capture: true }
+  { capture: true } // ensure popup sees keys even when inputs have focus
 );
 
 // ---------- init ----------
