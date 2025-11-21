@@ -40,7 +40,7 @@ let runState = {
 
   // history of visited tabs (for left/right keys)
   history: [],
-  historyIndex: -1
+  historyIndex: -1,
 };
 
 /**
@@ -51,7 +51,6 @@ const MAX_HISTORY_BACK_STEPS = 10;
 
 // Hard cap for total stored history entries (just for memory safety)
 const MAX_HISTORY_ENTRIES = 200;
-
 
 let selectedTabIds = new Set();
 let selectionMode = false;
@@ -68,17 +67,18 @@ async function markTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "MARK_TAB" });
   } catch (_) {
-    // may fail on about: pages, etc.
+    // may fail on about: or special pages; ignore
   }
 }
 
 async function unmarkTabVisual(tabId) {
   try {
     await browser.tabs.sendMessage(tabId, { type: "UNMARK_TAB" });
-  } catch (_) {}
+  } catch (_) {
+    // may fail on about: or special pages; ignore
+  }
 }
 
-// Remove markers from range mode
 async function clearRangeMarks() {
   const ids = [...rangeMarkedIds];
   for (const id of ids) {
@@ -87,134 +87,197 @@ async function clearRangeMarks() {
   rangeMarkedIds.clear();
 }
 
-// Remove all markers from every tab (including old ones)
-async function clearAllMarkers() {
-  const allTabs = await browser.tabs.query({});
-  for (const t of allTabs) {
-    await unmarkTabVisual(t.id);
-  }
-  selectedTabIds.clear();
-  rangeMarkedIds.clear();
-  selectionMode = false;
-  selectionOriginTabId = null;
-  // lastRunTabIds is kept — user may still want to close those tabs
-}
-
 // ---------------- STATE BROADCAST ----------------
 
 function broadcastStateChange() {
-  try {
-    browser.runtime.sendMessage({ type: "STATE_CHANGED" }).catch(() => {});
-  } catch (_) {}
+  const { running, paused, windowId, stopDeadline, remainingMs } = runState;
+  browser.runtime.sendMessage({
+    type: "STATE_CHANGED",
+    running,
+    paused,
+    windowId,
+    stopDeadline,
+    remainingMs,
+  });
 }
 
-// ---------------- MESSAGE HANDLER ----------------
+// ---------------- TIMING ----------------
 
-browser.runtime.onMessage.addListener((msg, sender) => {
-  if (!msg || typeof msg.type !== "string") return;
+function computeDelayMs() {
+  const base = runState.seconds;
 
-  // Space / general human input can stop the run
-  if (
-    (msg.type === "SPACE_STOP" || msg.type === "HUMAN_INPUT") &&
-    runState.running &&
-    runState.stopOnHuman
-  ) {
-    return stopRunner().then(() => ({ ok: true }));
+  if (runState.rangeEnabled) {
+    const r = Math.random() < 0.5 ? -1 : 1;
+    const mag =
+      Math.random() * (runState.rangeMax - runState.rangeMin) +
+      runState.rangeMin;
+    return Math.max(50, (base + r * mag) * 1000);
   }
 
-  switch (msg.type) {
-    case "START":
-      return handleStart(msg);
-
-    case "STOP":
-      return stopRunner().then(() => ({ ok: true }));
-
-    case "PAUSE":
-      return pauseRunner().then(() => ({ ok: true }));
-
-    case "RESUME":
-      return resumeRunner().then(() => ({ ok: true }));
-
-    case "GET_STATE":
-      return handleGetState();
-
-    case "START_SELECTION":
-      return handleStartSelection();
-
-    case "STOP_SELECTION":
-      selectionMode = false;
-      selectionOriginTabId = null;
-      return handleStopSelection();
-
-    case "GET_SELECTED_TABS":
-      return handleGetSelectedTabs();
-
-    case "UNSELECT_TAB":
-      if (typeof msg.tabId === "number") {
-        selectedTabIds.delete(msg.tabId);
-        unmarkTabVisual(msg.tabId);
-      }
-      return handleGetSelectedTabs();
-
-    case "CLEAR_ALL_MARKERS":
-      return clearAllMarkers().then(() => ({ ok: true }));
-
-    case "GET_SELECTION_STATE":
-      return Promise.resolve({
-        selecting: selectionMode,
-        originTabId: selectionOriginTabId
-      });
-
-    // Close tabs of last run
-    case "CLOSE_LAST_RUN_TABS":
-      return closeLastRunTabs();
-
-    // Hotkeys
-    case "HOTKEY_NEXT":
-      return handleHotkeyNext();
-
-    case "HOTKEY_PREV":
-      return handleHotkeyPrev();
-
-    case "HOTKEY_PAUSE":
-      return pauseRunner().then(() => ({ ok: true }));
-
-    case "HOTKEY_RESUME":
-      return resumeRunner().then(() => ({ ok: true }));
-
-    case "HOTKEY_STOP":
-      return stopRunner().then(() => ({ ok: true }));
-
-    default:
-      return;
+  if (runState.jitterEnabled) {
+    const p = runState.jitterPct;
+    const min = base * (1 - p);
+    const max = base * (1 + p);
+    return (Math.random() * (max - min) + min) * 1000;
   }
-});
 
-// ---------------- TAB ACTIVATION LISTENER ----------------
+  return base * 1000;
+}
 
-browser.tabs.onActivated.addListener(async (activeInfo) => {
-  const id = activeInfo.tabId;
+function scheduleNextHop(delayMs) {
+  if (!runState.running || runState.paused) return;
 
-  if (selectionMode) {
-    // toggle inclusion while choosing tabs
-    if (selectedTabIds.has(id)) {
-      selectedTabIds.delete(id);
-      await unmarkTabVisual(id);
-    } else {
-      selectedTabIds.add(id);
-      await markTabVisual(id);
-    }
+  const remain = Math.max(0, runState.stopDeadline - Date.now());
+  if (remain <= 0) {
+    stopRunner();
     return;
   }
 
-  // normal hop-running behavior
-  if (!runState.running || !runState.stopOnHuman) return;
-  if (runState._activatingByCode) return;
+  const d = Math.min(remain, delayMs);
 
-  await stopRunner();
-});
+  runState.nextTimeoutId = setTimeout(async () => {
+    await hopOnce();
+    if (!runState.running || runState.paused) return;
 
-// ---------------- START SELECTION ----------------
+    const r = Math.max(0, runState.stopDeadline - Date.now());
+    if (r <= 0) {
+      stopRunner();
+      return;
+    }
+
+    scheduleNextHop(Math.min(r, computeDelayMs()));
+  }, d);
+}
+
+// ---------------- HOP LOGIC ----------------
+
+async function hopOnce() {
+  try {
+    if (!runState.running || runState.paused || runState.windowId == null)
+      return;
+
+    const tabs = await browser.tabs.query({ windowId: runState.windowId });
+    if (!tabs.length) return;
+
+    tabs.sort((a, b) => a.index - b.index);
+
+    let list;
+    if (runState.useSelectedTabs && selectedTabIds.size > 0) {
+      const set = new Set(selectedTabIds);
+      list = tabs.filter((t) => set.has(t.id));
+    } else {
+      list = tabs.filter((t) => {
+        const idx1 = t.index + 1;
+        return idx1 >= runState.tabStart && idx1 <= runState.tabEnd;
+      });
+    }
+
+    if (!list.length) return;
+
+    let next;
+    if (runState.mode === "sequential") {
+      // ensure nextSeqPos is in range
+      if (runState.nextSeqPos < 0 || runState.nextSeqPos >= list.length) {
+        runState.nextSeqPos = 0;
+      }
+      next = list[runState.nextSeqPos];
+      runState.nextSeqPos = (runState.nextSeqPos + 1) % list.length;
+    } else {
+      // random
+      next = list[Math.floor(Math.random() * list.length)];
+    }
+
+    if (!next) return;
+
+    // mark that we are activating by code to avoid stop-on-human triggering
+    runState._activatingByCode = true;
+    try {
+      await browser.tabs.update(next.id, { active: true });
+      await browser.windows.update(runState.windowId, { focused: true });
+    } finally {
+      runState._activatingByCode = false;
+    }
+
+    // If we previously went backwards in history, drop all "forward" entries.
+    if (
+      runState.historyIndex >= 0 &&
+      runState.historyIndex < runState.history.length - 1
+    ) {
+      runState.history = runState.history.slice(0, runState.historyIndex + 1);
+    }
+
+    // Append this tab to history
+    runState.history.push(next.id);
+
+    // Hard cap total history length
+    if (runState.history.length > MAX_HISTORY_ENTRIES) {
+      runState.history.shift();
+    }
+
+    // We are now at the end of the history
+    runState.historyIndex = runState.history.length - 1;
+  } catch (e) {
+    console.error("hopOnce error:", e);
+  }
+}
+
+// ---------------- RUNNER CONTROL ----------------
+
+function startRunner() {
+  if (runState.running) return;
+  runState.running = true;
+  runState.paused = false;
+
+  runState.remainingMs = runState.totalMinutes * 60_000;
+  runState.stopDeadline = Date.now() + runState.remainingMs;
+
+  broadcastStateChange();
+  scheduleNextHop(0);
+}
+
+async function stopRunner() {
+  if (runState.nextTimeoutId) {
+    clearTimeout(runState.nextTimeoutId);
+    runState.nextTimeoutId = null;
+  }
+
+  // auto-clear range markers when stopping a range run
+  if (!runState.useSelectedTabs) {
+    await clearRangeMarks();
+  }
+
+  runState.running = false;
+  runState.paused = false;
+  runState.windowId = null;
+  runState.stopDeadline = null;
+  runState.remainingMs = 0;
+
+  broadcastStateChange();
+}
+
+async function pauseRunner() {
+  if (!runState.running || runState.paused) return;
+  runState.paused = true;
+
+  if (runState.nextTimeoutId) {
+    clearTimeout(runState.nextTimeoutId);
+    runState.nextTimeoutId = null;
+  }
+
+  runState.remainingMs = Math.max(0, runState.stopDeadline - Date.now());
+  broadcastStateChange();
+}
+
+async function resumeRunner() {
+  if (!runState.running || !runState.paused) return;
+  runState.paused = false;
+
+  runState.stopDeadline = Date.now() + (runState.remainingMs || 0);
+  broadcastStateChange();
+  scheduleNextHop(0);
+}
+
+// ---------------- SELECTION MODE ----------------
 
 async function handleStartSelection() {
   selectionMode = true;
@@ -232,6 +295,60 @@ async function handleStartSelection() {
   } catch (_) {}
 
   return { ok: true };
+}
+
+async function handleStopSelection() {
+  selectionMode = false;
+  selectionOriginTabId = null;
+  return { ok: true };
+}
+
+async function handleGetSelectedTabs() {
+  const tabs = await browser.tabs.query({ windowId: runState.windowId });
+  tabs.sort((a, b) => a.index - b.index);
+  const set = new Set(selectedTabIds);
+  const list = tabs.filter((t) => set.has(t.id));
+  return { tabs: list };
+}
+
+// Snapshot which tabs are part of this run
+async function snapshotLastRunTabs() {
+  lastRunTabIds.clear();
+
+  if (runState.windowId == null) return;
+
+  const allTabs = await browser.tabs.query({ windowId: runState.windowId });
+  allTabs.sort((a, b) => a.index - b.index);
+
+  let list;
+
+  if (runState.useSelectedTabs && selectedTabIds.size > 0) {
+    const set = new Set(selectedTabIds);
+    list = allTabs.filter((t) => set.has(t.id));
+  } else {
+    list = allTabs.filter((t) => {
+      const idx = t.index + 1;
+      return idx >= runState.tabStart && idx <= runState.tabEnd;
+    });
+  }
+
+  for (const t of list) {
+    lastRunTabIds.add(t.id);
+  }
+}
+
+// ---------------- GET STATE ----------------
+
+async function handleGetState() {
+  const last = await browser.storage.local.get("lastParams");
+  return {
+    running: runState.running,
+    paused: runState.paused,
+    windowId: runState.windowId,
+    stopDeadline: runState.stopDeadline,
+    remainingMs: runState.remainingMs,
+    lastParams: last.lastParams || null,
+  };
 }
 
 // ---------------- START HOP RUN ----------------
@@ -299,255 +416,9 @@ async function handleStart(msg) {
   return { ok: true };
 }
 
-// Snapshot which tabs are part of this run
-async function snapshotLastRunTabs() {
-  lastRunTabIds.clear();
+// ---------------- HOTKEYS: NEXT / PREV / SPACE / CLOSE_LAST_RUN_TABS ----------------
 
-  if (runState.windowId == null) return;
-
-  const allTabs = await browser.tabs.query({ windowId: runState.windowId });
-  allTabs.sort((a, b) => a.index - b.index);
-
-  let list;
-
-  if (runState.useSelectedTabs && selectedTabIds.size > 0) {
-    const set = new Set(selectedTabIds);
-    list = allTabs.filter((t) => set.has(t.id));
-  } else {
-    list = allTabs.filter((t) => {
-      const idx = t.index + 1;
-      return idx >= runState.tabStart && idx <= runState.tabEnd;
-    });
-  }
-
-  for (const t of list) {
-    lastRunTabIds.add(t.id);
-  }
-}
-
-// ---------------- GET STATE ----------------
-
-async function handleGetState() {
-  const last = await browser.storage.local.get("lastParams");
-  return {
-    running: runState.running,
-    paused: runState.paused,
-    lastParams: last.lastParams || null
-  };
-}
-
-// ---------------- SELECTION HELPERS ----------------
-
-async function handleStopSelection() {
-  const list = await getSelectedTabsMeta();
-  return { ok: true, count: list.length, tabs: list };
-}
-
-async function handleGetSelectedTabs() {
-  const tabs = await getSelectedTabsMeta();
-  return { tabs };
-}
-
-async function getSelectedTabsMeta() {
-  if (!selectedTabIds.size) return [];
-  const all = await browser.tabs.query({});
-  const idSet = new Set(selectedTabIds);
-  return all
-    .filter((t) => idSet.has(t.id))
-    .map((t) => ({
-      id: t.id,
-      title: t.title,
-      index1: t.index + 1,
-      windowId: t.windowId
-    }));
-}
-
-// ---------------- RUNNER LOGIC ----------------
-
-function startRunner() {
-  if (runState.running) return;
-  runState.running = true;
-  runState.paused = false;
-
-  runState.remainingMs = runState.totalMinutes * 60_000;
-  runState.stopDeadline = Date.now() + runState.remainingMs;
-
-  broadcastStateChange();
-  scheduleNextHop(0);
-}
-
-async function stopRunner() {
-  if (runState.nextTimeoutId) {
-    clearTimeout(runState.nextTimeoutId);
-    runState.nextTimeoutId = null;
-  }
-
-  // auto-clear range markers when stopping a range run
-  if (!runState.useSelectedTabs) {
-    await clearRangeMarks();
-  }
-
-  runState.running = false;
-  runState.paused = false;
-  runState.windowId = null;
-  runState.stopDeadline = null;
-  runState.remainingMs = 0;
-
-  broadcastStateChange();
-}
-
-async function pauseRunner() {
-  if (!runState.running || runState.paused) return;
-  runState.paused = true;
-
-  if (runState.nextTimeoutId) {
-    clearTimeout(runState.nextTimeoutId);
-    runState.nextTimeoutId = null;
-  }
-
-  runState.remainingMs = Math.max(0, runState.stopDeadline - Date.now());
-  broadcastStateChange();
-}
-
-async function resumeRunner() {
-  if (!runState.running || !runState.paused) return;
-  runState.paused = false;
-
-  runState.stopDeadline = Date.now() + runState.remainingMs;
-  broadcastStateChange();
-  scheduleNextHop(0);
-}
-
-function computeDelayMs() {
-  const base = runState.seconds;
-
-  if (runState.rangeEnabled) {
-    const r = Math.random() < 0.5 ? -1 : 1;
-    const mag =
-      Math.random() * (runState.rangeMax - runState.rangeMin) +
-      runState.rangeMin;
-    return Math.max(50, (base + r * mag) * 1000);
-  }
-
-  if (runState.jitterEnabled) {
-    const p = runState.jitterPct;
-    const min = base * (1 - p);
-    const max = base * (1 + p);
-    return (Math.random() * (max - min) + min) * 1000;
-  }
-
-  return base * 1000;
-}
-
-function scheduleNextHop(delayMs) {
-  if (!runState.running || runState.paused) return;
-
-  const remain = Math.max(0, runState.stopDeadline - Date.now());
-  if (remain <= 0) {
-    stopRunner();
-    return;
-  }
-
-  const d = Math.min(remain, delayMs);
-
-  runState.nextTimeoutId = setTimeout(async () => {
-    await hopOnce();
-    if (!runState.running || runState.paused) return;
-
-    const r = Math.max(0, runState.stopDeadline - Date.now());
-    if (r <= 0) {
-      stopRunner();
-      return;
-    }
-
-    scheduleNextHop(Math.min(r, computeDelayMs()));
-  }, d);
-}
-
-async function hopOnce() {
-  try {
-    if (!runState.running || runState.paused || runState.windowId == null)
-      return;
-
-    const tabs = await browser.tabs.query({ windowId: runState.windowId });
-    if (!tabs.length) return;
-
-    tabs.sort((a, b) => a.index - b.index);
-
-    let list;
-    if (runState.useSelectedTabs && selectedTabIds.size > 0) {
-      const set = new Set(selectedTabIds);
-      list = tabs.filter((t) => set.has(t.id));
-    } else {
-      list = tabs.filter((t) => {
-        const idx = t.index + 1;
-        return idx >= runState.tabStart && idx <= runState.tabEnd;
-      });
-    }
-
-    if (!list.length) return;
-
-    let next;
-    if (runState.mode === "sequential") {
-      next = list[runState.nextSeqPos];
-      runState.nextSeqPos = (runState.nextSeqPos + 1) % list.length;
-    } else {
-      // random mode
-      next = list[Math.floor(Math.random() * list.length)];
-    }
-
-    await activateTab(next.id, true);
-
-    // If we previously went backwards in history, drop all "forward" entries.
-    // This makes history behave like a browser: after going back and then
-    // visiting a new tab, the old forward path is discarded.
-    if (
-      runState.historyIndex >= 0 &&
-      runState.historyIndex < runState.history.length - 1
-    ) {
-      runState.history = runState.history.slice(0, runState.historyIndex + 1);
-    }
-
-    // Append this tab to history
-    runState.history.push(next.id);
-
-    // Hard cap total history length
-    if (runState.history.length > MAX_HISTORY_ENTRIES) {
-      runState.history.shift();
-    }
-
-    // We are now at the end of the history
-    runState.historyIndex = runState.history.length - 1;
-  } catch (e) {
-    console.error("hopOnce error:", e);
-  }
-}
-
-async function activateTab(tabId, focusWindow) {
-  try {
-    const tab = await browser.tabs.get(tabId);
-    const winId = tab.windowId;
-
-    if (focusWindow && winId != null) {
-      await browser.windows.update(winId, { focused: true });
-    }
-
-    runState._activatingByCode = true;
-    try {
-      await browser.tabs.update(tabId, { active: true });
-    } finally {
-      setTimeout(() => {
-        runState._activatingByCode = false;
-      }, 120);
-    }
-  } catch (e) {
-    console.error("activateTab error:", e);
-  }
-}
-
-// ---------------- HOTKEY HANDLERS ----------------
-
-async async function handleHotkeyNext() {
+async function handleHotkeyNext() {
   if (!runState.running || runState.paused) return { ok: false };
 
   if (runState.nextTimeoutId) {
@@ -580,7 +451,6 @@ async function handleHotkeyPrev() {
   }
 
   // You can go back at most MAX_HISTORY_BACK_STEPS from the *latest* tab
-  // (rightmost history entry).
   const minIndex = Math.max(0, len - 1 - MAX_HISTORY_BACK_STEPS);
 
   // Already as far back as allowed? Then left-arrow does nothing.
@@ -597,9 +467,19 @@ async function handleHotkeyPrev() {
   const tabId = runState.history[newIndex];
 
   try {
-    await activateTab(tabId, true);
+    runState._activatingByCode = true;
+    try {
+      await browser.tabs.update(tabId, { active: true });
+      if (runState.windowId != null) {
+        await browser.windows.update(runState.windowId, { focused: true });
+      }
+    } finally {
+      runState._activatingByCode = false;
+    }
+
     runState.historyIndex = newIndex;
 
+    // Cancel any scheduled hop and reschedule
     if (runState.nextTimeoutId) {
       clearTimeout(runState.nextTimeoutId);
       runState.nextTimeoutId = null;
@@ -621,20 +501,12 @@ async function handleHotkeyPrev() {
   }
 }
 
-// ---------------- CLOSE LAST RUN TABS ----------------
-
 async function closeLastRunTabs() {
-  // Don't close while a run is active
-  if (runState.running) {
-    return { closed: 0, running: true };
-  }
-
-  if (!lastRunTabIds.size) {
-    return { closed: 0, running: false };
-  }
+  const ids = [...lastRunTabIds];
+  if (!ids.length) return { closed: 0, running: runState.running };
 
   const allTabs = await browser.tabs.query({});
-  const idSet = new Set(lastRunTabIds);
+  const idSet = new Set(ids);
   let closed = 0;
 
   for (const t of allTabs) {
@@ -649,5 +521,109 @@ async function closeLastRunTabs() {
   }
 
   lastRunTabIds.clear();
-  return { closed, running: false };
+  return { closed, running: runState.running };
 }
+
+// ---------------- MESSAGE HANDLER ----------------
+
+browser.runtime.onMessage.addListener((msg, sender) => {
+  if (!msg || typeof msg.type !== "string") return;
+
+  // Space / general human input can stop the run
+  if (
+    (msg.type === "SPACE_STOP" || msg.type === "HUMAN_INPUT") &&
+    runState.running &&
+    runState.stopOnHuman
+  ) {
+    return stopRunner().then(() => ({ ok: true }));
+  }
+
+  switch (msg.type) {
+    case "START":
+      return handleStart(msg);
+
+    case "STOP":
+      return stopRunner().then(() => ({ ok: true }));
+
+    case "PAUSE":
+      return pauseRunner().then(() => ({ ok: true }));
+
+    case "RESUME":
+      return resumeRunner().then(() => ({ ok: true }));
+
+    case "GET_STATE":
+      return handleGetState();
+
+    case "START_SELECTION":
+      return handleStartSelection();
+
+    case "STOP_SELECTION":
+      selectionMode = false;
+      selectionOriginTabId = null;
+      return handleStopSelection();
+
+    case "GET_SELECTED_TABS":
+      return handleGetSelectedTabs();
+
+    case "UNSELECT_TAB":
+      if (typeof msg.tabId === "number") {
+        selectedTabIds.delete(msg.tabId);
+        unmarkTabVisual(msg.tabId);
+      }
+      return handleGetSelectedTabs();
+
+    case "CLEAR_ALL_MARKERS":
+      return clearAllMarkers().then(() => ({ ok: true }));
+
+    case "GET_SELECTION_STATE":
+      return Promise.resolve({
+        selecting: selectionMode,
+        originTabId: selectionOriginTabId,
+      });
+
+    case "HOTKEY_NEXT":
+      return handleHotkeyNext();
+
+    case "HOTKEY_PREV":
+      return handleHotkeyPrev();
+
+    case "CLOSE_LAST_RUN_TABS":
+      return closeLastRunTabs();
+
+    default:
+      break;
+  }
+});
+
+// clear all markers helper for "Clear all markers" button
+async function clearAllMarkers() {
+  const tabs = await browser.tabs.query({});
+  for (const t of tabs) {
+    await unmarkTabVisual(t.id);
+  }
+  selectedTabIds.clear();
+  rangeMarkedIds.clear();
+}
+
+// ---------------- TAB ACTIVATION WATCHER ----------------
+
+browser.tabs.onActivated.addListener(async (activeInfo) => {
+  const id = activeInfo.tabId;
+
+  if (selectionMode) {
+    // toggle inclusion while choosing tabs
+    if (selectedTabIds.has(id)) {
+      selectedTabIds.delete(id);
+      await unmarkTabVisual(id);
+    } else {
+      selectedTabIds.add(id);
+      await markTabVisual(id);
+    }
+    return;
+  }
+
+  // human-triggered activities can optionally stop
+  if (!runState._activatingByCode && runState.running && runState.stopOnHuman) {
+    await stopRunner();
+  }
+});
