@@ -424,6 +424,22 @@ document.addEventListener(
   "keydown",
   async (e) => {
     const key = e.key;
+    const code = e.code;
+    const kc = e.keyCode || e.which;
+
+    const isRight =
+      key === "ArrowRight" ||
+      code === "ArrowRight" ||
+      kc === 39 ||
+      key === "Right" ||
+      code === "Right";
+
+    const isLeft =
+      key === "ArrowLeft" ||
+      code === "ArrowLeft" ||
+      kc === 37 ||
+      key === "Left" ||
+      code === "Left";
 
     try {
       // Enter: start when stopped, resume when paused
@@ -441,13 +457,13 @@ document.addEventListener(
       }
 
       // Arrow keys in popup: same HOTKEY_NEXT/PREV as on page
-      if (key === "ArrowRight" || key === "Right") {
+      if (isRight) {
         e.preventDefault();
         await browser.runtime.sendMessage({ type: "HOTKEY_NEXT" });
         return;
       }
 
-      if (key === "ArrowLeft" || key === "Left") {
+      if (isLeft) {
         e.preventDefault();
         await browser.runtime.sendMessage({ type: "HOTKEY_PREV" });
         return;
