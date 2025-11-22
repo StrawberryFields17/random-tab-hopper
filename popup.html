@@ -295,21 +295,25 @@
       cursor:pointer;
     }
 
-    .hotkey-panel{
-      position:absolute;
-      inset:6px;
-      border-radius:10px;
-      background:#11161b;
-      box-shadow:0 6px 16px rgba(0,0,0,.7);
-      padding:8px;
-      display:none;
-      z-index:20;
-      font-size:11px;
-    }
+.hotkey-panel{
+  position:absolute;
+  inset:6px;
+  border-radius:10px;
+  background:#11161b;
+  box-shadow:0 6px 16px rgba(0,0,0,.7);
+  padding:8px;
+  display:none;
+  z-index:20;
+  font-size:11px;
+  /* Important: don’t intercept clicks when hidden */
+  pointer-events:none;
+}
 
-    .hotkey-panel.visible{
-      display:block;
-    }
+.hotkey-panel.visible{
+  display:block;
+  pointer-events:auto; /* only clickable when actually shown */
+}
+
 
     .hotkey-panel-header{
       display:flex;
