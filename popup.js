@@ -42,7 +42,8 @@ const els = {
   hotkeyCloseBtn: document.getElementById("hotkeyCloseBtn"),
 };
 
-// state
+// ---------- state ----------
+
 let currentMode = "random";
 let jitterOn = false;
 let rangeOn = false;
@@ -66,7 +67,6 @@ function setJitter(on) {
   els.jitterToggle.setAttribute("aria-pressed", jitterOn ? "true" : "false");
   els.jitterRange.classList.toggle("slider-disabled", !jitterOn);
 
-  // mutual exclusivity with custom range
   if (jitterOn && rangeOn) setRange(false);
 
   updateJitterLabel();
@@ -82,7 +82,6 @@ function setRange(on) {
     r.classList.toggle("disabled", !rangeOn);
   });
 
-  // mutual exclusivity with jitter
   if (rangeOn && jitterOn) setJitter(false);
 }
 
@@ -111,8 +110,8 @@ function updateDualSlider(from) {
 
   const lo = parseFloat(minR.min);
   const hi = parseFloat(maxR.max);
-
   const span = hi - lo || 1;
+
   const leftPct = ((minVal - lo) / span) * 100;
   const rightPct = 100 - ((maxVal - lo) / span) * 100;
 
@@ -123,23 +122,46 @@ function updateDualSlider(from) {
   els.maxLabel.textContent = `${maxVal.toFixed(1)}s`;
 }
 
+function updateManualNote() {
+  if (useSelectedTabs) {
+    if (manualCount > 0) {
+      els.manualNote.textContent = `Manual tab list active (${manualCount} tab${
+        manualCount === 1 ? "" : "s"
+      } selected).`;
+    } else {
+      els.manualNote.textContent =
+        "Manual tab list active, but no tabs selected yet.";
+    }
+  } else {
+    els.manualNote.textContent =
+      "Manual tab list disabled (using tab range).";
+  }
+}
+
 function setUseSelectedTabs(on) {
   useSelectedTabs = !!on;
+
   els.useListToggle.classList.toggle("on", useSelectedTabs);
   els.useListToggle.textContent = useSelectedTabs ? "ON" : "OFF";
-  els.useListToggle.setAttribute("aria-pressed", useSelectedTabs ? "true" : "false");
+  els.useListToggle.setAttribute(
+    "aria-pressed",
+    useSelectedTabs ? "true" : "false"
+  );
 
   if (useSelectedTabs) {
     els.rangeSection.classList.add("section-disabled");
-    els.rangeNote.textContent = "Using manual tab list.";
-    els.manualNote.textContent = `Manual tab list active (${manualCount} tab${
-      manualCount === 1 ? "" : "s"
-    } selected).`;
+    els.tabStart.disabled = true;
+    els.tabEnd.disabled = true;
+    els.rangeNote.textContent = "Using manual tab list (tab range disabled).";
   } else {
     els.rangeSection.classList.remove("section-disabled");
-    els.rangeNote.textContent = "Using tab range (manual tab list disabled).";
-    els.manualNote.textContent = "Manual tab list disabled (using tab range).";
+    els.tabStart.disabled = false;
+    els.tabEnd.disabled = false;
+    els.rangeNote.textContent =
+      "Using tab range (manual tab list disabled).";
   }
+
+  updateManualNote();
 }
 
 function updateChooserButton() {
@@ -163,6 +185,75 @@ function setMode(mode) {
   });
 }
 
+// ---------- variance events ----------
+
+els.jitterToggle.addEventListener("click", () => {
+  setJitter(!jitterOn);
+});
+
+els.jitterRange.addEventListener("input", () => {
+  // Moving the slider:
+  // 1) ensures jitter is ON
+  // 2) updates the label/value
+  // 3) disables custom range (mutually exclusive)
+  if (!jitterOn) {
+    setJitter(true);
+  } else {
+    updateJitterLabel();
+  }
+
+  if (rangeOn) {
+    setRange(false);
+  }
+});
+
+["input", "change"].forEach((ev) => {
+  els.minRange.addEventListener(ev, () => {
+    if (!rangeOn) setRange(true);
+    updateDualSlider("min");
+  });
+  els.maxRange.addEventListener(ev, () => {
+    if (!rangeOn) setRange(true);
+    updateDualSlider("max");
+  });
+});
+
+els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
+
+// ---------- manual list + choosing ----------
+
+els.useListToggle.addEventListener("click", () => {
+  setUseSelectedTabs(!useSelectedTabs);
+});
+
+els.chooseTabsBtn.addEventListener("click", async () => {
+  if (!selectingTabs) {
+    setUseSelectedTabs(true);
+    selectingTabs = true;
+    updateChooserButton();
+    await browser.runtime.sendMessage({ type: "START_SELECTION" });
+  } else {
+    selectingTabs = false;
+    updateChooserButton();
+    const res = await browser.runtime.sendMessage({
+      type: "STOP_SELECTION",
+    });
+    manualCount =
+      res && typeof res.count === "number" ? res.count : 0;
+    updateManualNote();
+  }
+});
+
+els.clearMarkersBtn.addEventListener("click", async () => {
+  await browser.runtime.sendMessage({ type: "CLEAR_ALL_MARKERS" });
+  manualCount = 0;
+  selectingTabs = false;
+  updateChooserButton();
+  updateManualNote();
+});
+
+// ---------- cleanup: close included tabs (last run) ----------
+
 async function closeIncludedTabs() {
   try {
     const res = await browser.runtime.sendMessage({
@@ -172,7 +263,7 @@ async function closeIncludedTabs() {
 
     if (res.running) {
       alert(
-        "Tabs were not closed because the hopper is currently running. Stop it first, then try again."
+        "Stop the current run first, then click “Close included tabs” again."
       );
     } else if (!res.hadLastRun) {
       alert("There is no previous run to close tabs from.");
@@ -187,6 +278,172 @@ async function closeIncludedTabs() {
     console.error("Error closing last run tabs:", e);
   }
 }
+
+els.closeLastRunBtn.addEventListener("click", closeIncludedTabs);
+
+// ---------- hotkeys overlay ----------
+
+els.hotkeyHelpBtn.addEventListener("click", () => {
+  els.hotkeyPanel.classList.add("visible");
+});
+
+els.hotkeyCloseBtn.addEventListener("click", () => {
+  els.hotkeyPanel.classList.remove("visible");
+});
+
+// ---------- mode switch ----------
+
+els.modeSwitch.addEventListener("click", (e) => {
+  const btn = e.target.closest(".mode-option");
+  if (!btn) return;
+  const mode = btn.dataset.mode === "sequential" ? "sequential" : "random";
+  setMode(mode);
+});
+
+// ---------- controls ----------
+
+els.startBtn.addEventListener("click", async () => {
+  const tabStart = parseInt(els.tabStart.value, 10);
+  const tabEnd = parseInt(els.tabEnd.value, 10);
+  const seconds = parseFloat(els.seconds.value);
+  const totalMinutes = parseFloat(els.totalMinutes.value);
+
+  if (
+    [tabStart, tabEnd, seconds, totalMinutes].some(Number.isNaN) ||
+    tabStart < 1 ||
+    tabEnd < tabStart ||
+    seconds <= 0 ||
+    totalMinutes <= 0
+  ) {
+    alert(
+      "Please enter valid values for tab range, seconds per tab, and total minutes."
+    );
+    return;
+  }
+
+  // If manual tab list is enabled, make sure there is actually a list.
+  // First ask the background for the current selection; if that is empty,
+  // try to rebuild it from green-dot markers in the tab titles.
+  if (useSelectedTabs) {
+    try {
+      let res = await browser.runtime.sendMessage({
+        type: "GET_SELECTED_TABS",
+      });
+      let tabs = (res && res.tabs) || [];
+
+      if (!tabs.length) {
+        res = await browser.runtime.sendMessage({
+          type: "SYNC_SELECTED_FROM_MARKERS",
+        });
+        tabs = (res && res.tabs) || [];
+      }
+
+      manualCount = tabs.length;
+      updateManualNote();
+
+      if (!tabs.length) {
+        alert(
+          'Manual tab list is enabled, but no tabs are selected.\n\n' +
+            'Click "Choose", select one or more tabs (they\'ll get a 🟢 in the title), ' +
+            'then click "Choose" again to finish.'
+        );
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to resolve manual tab list:", err);
+    }
+  }
+
+  const jitterPct = (parseInt(els.jitterRange.value, 10) || 0) / 100.0;
+  const rangeMin = parseFloat(els.minRange.value);
+  const rangeMax = parseFloat(els.maxRange.value);
+
+  await browser.runtime.sendMessage({
+    type: "START",
+    tabStart,
+    tabEnd,
+    seconds,
+    totalMinutes,
+    jitterEnabled: jitterOn,
+    jitterPct,
+    rangeEnabled: rangeOn,
+    rangeMin,
+    rangeMax,
+    useSelectedTabs,
+    mode: currentMode,
+    stopOnHuman: !!els.stopOnHuman.checked,
+  });
+
+  selectingTabs = false;
+  updateChooserButton();
+
+  await refreshState();
+});
+
+els.pauseResumeBtn.addEventListener("click", async () => {
+  const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
+  if (!state || !state.running) return;
+  await browser.runtime.sendMessage({
+    type: state.paused ? "RESUME" : "PAUSE",
+  });
+  await refreshState();
+});
+
+els.stopBtn.addEventListener("click", async () => {
+  await browser.runtime.sendMessage({ type: "STOP" });
+  await refreshState();
+});
+
+// ---------- keyboard shortcuts inside popup ----------
+
+document.addEventListener(
+  "keydown",
+  async (e) => {
+    const key = e.key;
+
+    try {
+      if (key === "Enter") {
+        const state = await browser.runtime.sendMessage({
+          type: "GET_STATE",
+        });
+        if (!state || !state.running) {
+          els.startBtn.click();
+        } else if (state.paused) {
+          await browser.runtime.sendMessage({ type: "RESUME" });
+          await refreshState();
+        }
+        return;
+      }
+
+      if (key === "ArrowRight" || key === "Right") {
+        e.preventDefault();
+        await browser.runtime.sendMessage({ type: "HOTKEY_NEXT" });
+        return;
+      }
+
+      if (key === "ArrowLeft" || key === "Left") {
+        e.preventDefault();
+        await browser.runtime.sendMessage({ type: "HOTKEY_PREV" });
+        return;
+      }
+
+      if (key === "c" || key === "C") {
+        const state = await browser.runtime.sendMessage({
+          type: "GET_STATE",
+        });
+        if (!state || !state.running) {
+          e.preventDefault();
+          els.closeLastRunBtn.click();
+        }
+      }
+    } catch (err) {
+      console.error("Popup key handler error:", err);
+    }
+  },
+  { capture: true }
+);
+
+// ---------- init ----------
 
 async function refreshState() {
   const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
@@ -236,241 +493,20 @@ async function refreshState() {
     }
   }
 
-  // manual selection count
-  const res = await browser.runtime.sendMessage({
-    type: "GET_SELECTED_TABS",
-  });
-  const tabs = (res && res.tabs) || [];
+  const sel = await browser.runtime.sendMessage({ type: "GET_SELECTED_TABS" });
+  const tabs = (sel && sel.tabs) || [];
   manualCount = tabs.length;
+  updateManualNote();
 
-  if (useSelectedTabs) {
-    els.manualNote.textContent = `Manual tab list active (${manualCount} tab${
-      manualCount === 1 ? "" : "s"
-    } selected).`;
-  }
-}
-
-// ---------- variance events ----------
-
-els.jitterToggle.addEventListener("click", () => {
-  // Explicit toggle when the ON/OFF button is clicked
-  setJitter(!jitterOn);
-});
-
-els.jitterRange.addEventListener("input", () => {
-  // When the user moves the slider, make sure:
-  // 1) the jitter mode is ON,
-  // 2) the label/text are updated,
-  // 3) the custom range mode is turned OFF (they are mutually exclusive).
-  if (!jitterOn) {
-    setJitter(true);
-  } else {
-    updateJitterLabel();
-  }
-
-  // Just in case, make sure custom range is disabled when tweaking the %
-  if (rangeOn) {
-    setRange(false);
-  }
-});
-
-["input", "change"].forEach((ev) => {
-  els.minRange.addEventListener(ev, () => {
-    if (!rangeOn) setRange(true);
-    updateDualSlider("min");
+  const selState = await browser.runtime.sendMessage({
+    type: "GET_SELECTION_STATE",
   });
-  els.maxRange.addEventListener(ev, () => {
-    if (!rangeOn) setRange(true);
-    updateDualSlider("max");
-  });
-});
-
-els.rangeToggle.addEventListener("click", () => setRange(!rangeOn));
-
-// ---------- manual list / chooser ----------
-
-els.useListToggle.addEventListener("click", () => {
-  setUseSelectedTabs(!useSelectedTabs);
-});
-
-els.chooseTabsBtn.addEventListener("click", async () => {
-  selectingTabs = !selectingTabs;
-  updateChooserButton();
-
+  selectingTabs = !!(selState && selState.selecting);
   if (selectingTabs) {
     setUseSelectedTabs(true);
-
-    // tell background we've started manual choosing
-    await browser.runtime.sendMessage({
-      type: "BEGIN_MANUAL_SELECT",
-    });
-  } else {
-    await browser.runtime.sendMessage({
-      type: "END_MANUAL_SELECT",
-    });
-    await refreshState();
   }
-});
-
-els.clearMarkersBtn.addEventListener("click", async () => {
-  await browser.runtime.sendMessage({ type: "CLEAR_MARKERS_AND_LIST" });
-  selectingTabs = false;
-  manualCount = 0;
   updateChooserButton();
-  setUseSelectedTabs(false);
-  await refreshState();
-});
-
-els.closeLastRunBtn.addEventListener("click", () => {
-  closeIncludedTabs();
-});
-
-// ---------- mode switch ----------
-
-els.modeSwitch.addEventListener("click", (e) => {
-  const btn = e.target.closest(".mode-option");
-  if (!btn) return;
-  const mode = btn.dataset.mode === "sequential" ? "sequential" : "random";
-  setMode(mode);
-});
-
-// ---------- hotkey overlay ----------
-
-els.hotkeyHelpBtn.addEventListener("click", () => {
-  els.hotkeyPanel.classList.add("visible");
-});
-
-els.hotkeyCloseBtn.addEventListener("click", () => {
-  els.hotkeyPanel.classList.remove("visible");
-});
-
-// ---------- controls ----------
-
-els.startBtn.addEventListener("click", async () => {
-  const tabStart = parseInt(els.tabStart.value, 10);
-  const tabEnd = parseInt(els.tabEnd.value, 10);
-  const seconds = parseFloat(els.seconds.value);
-  const totalMinutes = parseFloat(els.totalMinutes.value);
-
-  if (
-    [tabStart, tabEnd, seconds, totalMinutes].some(Number.isNaN) ||
-    tabStart < 1 ||
-    tabEnd < tabStart ||
-    seconds <= 0 ||
-    totalMinutes <= 0
-  ) {
-    alert(
-      "Please enter valid values for tab range, seconds per tab, and total minutes."
-    );
-    return;
-  }
-
-  const jitterPct = (parseInt(els.jitterRange.value, 10) || 0) / 100.0;
-  const rangeMin = parseFloat(els.minRange.value);
-  const rangeMax = parseFloat(els.maxRange.value);
-
-  await browser.runtime.sendMessage({
-    type: "START",
-    tabStart,
-    tabEnd,
-    seconds,
-    totalMinutes,
-    jitterEnabled: jitterOn && !rangeOn,
-    jitterPct,
-    rangeEnabled: rangeOn,
-    rangeMin,
-    rangeMax,
-    useSelectedTabs,
-    mode: currentMode,
-    stopOnHuman: !!els.stopOnHuman.checked,
-  });
-
-  selectingTabs = false;
-  updateChooserButton();
-
-  await refreshState();
-});
-
-els.pauseResumeBtn.addEventListener("click", async () => {
-  const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
-  if (!state || !state.running) return;
-  await browser.runtime.sendMessage({
-    type: state.paused ? "RESUME" : "PAUSE",
-  });
-  await refreshState();
-});
-
-els.stopBtn.addEventListener("click", async () => {
-  await browser.runtime.sendMessage({ type: "STOP" });
-  await refreshState();
-});
-
-// ---------- global keyboard shortcuts inside popup -----
-
-document.addEventListener(
-  "keydown",
-  async (e) => {
-    const tag = (e.target && e.target.tagName) || "";
-    const isInput =
-      tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable;
-
-    // We still want Enter in number fields to start/resume
-    const allowEnter = e.key === "Enter";
-
-    if (isInput && !allowEnter) {
-      return;
-    }
-
-    const state = await browser.runtime.sendMessage({ type: "GET_STATE" });
-
-    switch (e.key) {
-      case "Enter": {
-        // Enter inside popup:
-        // - if stopped → Start
-        // - if paused → Resume
-        // - if running → do nothing
-        if (!state || !state.running) {
-          // stopped
-          els.startBtn.click();
-        } else if (state.paused) {
-          els.pauseResumeBtn.click();
-        }
-        break;
-      }
-
-      case "ArrowRight": {
-        // jump to next included tab (while running)
-        if (state && state.running) {
-          await browser.runtime.sendMessage({ type: "JUMP_NEXT" });
-        }
-        break;
-      }
-
-      case "ArrowLeft": {
-        // jump to previous included tab (while running)
-        if (state && state.running) {
-          await browser.runtime.sendMessage({ type: "JUMP_PREV" });
-        }
-        break;
-      }
-
-      case "c":
-      case "C": {
-        // Close included tabs of last run (when not running)
-        if (!state || !state.running) {
-          els.closeLastRunBtn.click();
-        }
-        break;
-      }
-
-      default:
-        break;
-    }
-  },
-  { capture: true } // ensure popup sees keys even when inputs have focus
-);
-
-// ---------- init ----------
+}
 
 updateDualSlider();
 updateJitterLabel();
