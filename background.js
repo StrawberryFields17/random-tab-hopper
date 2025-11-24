@@ -245,8 +245,14 @@ async function hopOnce() {
 function jumpHistory(offset) {
   if (!runState.running || !runState.history.length) return;
 
+  // We only allow going back / forward within the last 10 visited tabs.
+  const maxHistoryWindow = 10;
+  const maxIndex = runState.history.length - 1;
+  const minIndex = Math.max(0, maxIndex - (maxHistoryWindow - 1));
+
   let newIndex = runState.historyIndex + offset;
-  newIndex = Math.max(0, Math.min(runState.history.length - 1, newIndex));
+  if (newIndex > maxIndex) newIndex = maxIndex;
+  if (newIndex < minIndex) newIndex = minIndex;
 
   if (newIndex === runState.historyIndex) return;
 
@@ -257,6 +263,7 @@ function jumpHistory(offset) {
     .update(tabId, { active: true })
     .catch(() => {});
 }
+
 
 // ---------------- LAST RUN SNAPSHOT ----------------
 
