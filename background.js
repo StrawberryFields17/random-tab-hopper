@@ -106,11 +106,20 @@ function startRunner() {
 }
 
 async function stopRunner() {
+  // Generic stop for any reason (Stop button, hotkey, timer, human input)
+  // Range-mode green markers should disappear when the run ends,
+  // but manual selection markers (manual list) must stay.
   runState.running = false;
   runState.paused = false;
   runState.windowId = null;
   runState.history = [];
   runState.historyIndex = -1;
+
+  // Clear only the range-based markers.
+  // Manual selection markers are tracked separately (selectedTabIds)
+  // and are *not* in rangeMarkedIds, so they stay visible.
+  await clearRangeMarks();
+
   broadcastStateChange();
 }
 
@@ -351,6 +360,15 @@ async function handleGetState() {
   };
 }
 
+async function restartFromLastParams() {
+  const stored = await browser.storage.local.get("lastParams");
+  const params = stored.lastParams;
+  if (!params) {
+    return { ok: false, reason: "no_last_params" };
+  }
+  return handleStart(params);
+}
+
 // ---------------- SELECTION HELPERS ----------------
 
 async function handleStopSelection() {
@@ -500,11 +518,34 @@ browser.runtime.onMessage.addListener((msg, sender) => {
     case "HOTKEY_PREV":
       return handleHotkeyPrev();
 
+    // P on pages: toggle pause / resume
+    case "HOTKEY_TOGGLE_PAUSE":
+      if (!runState.running) {
+        return Promise.resolve({ ok: false, reason: "not_running" });
+      }
+      if (runState.paused) {
+        return resumeRunner().then(() => ({ ok: true, state: "running" }));
+      }
+      return pauseRunner().then(() => ({ ok: true, state: "paused" }));
+
+    // Legacy explicit pause/resume (popup etc.)
     case "HOTKEY_PAUSE":
       return pauseRunner().then(() => ({ ok: true }));
 
     case "HOTKEY_RESUME":
       return resumeRunner().then(() => ({ ok: true }));
+
+    // Enter on pages:
+    // - if stopped: restart last run from stored params
+    // - if paused: resume
+    case "HOTKEY_ENTER":
+      if (!runState.running) {
+        return restartFromLastParams();
+      }
+      if (runState.paused) {
+        return resumeRunner().then(() => ({ ok: true, state: "running" }));
+      }
+      return Promise.resolve({ ok: true, state: "running" });
 
     case "HOTKEY_STOP":
       return stopRunner().then(() => ({ ok: true }));
