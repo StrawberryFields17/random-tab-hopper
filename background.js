@@ -420,7 +420,15 @@ async function syncSelectedFromMarkers() {
 // ---------------- RUNNER LOGIC ----------------
 
 function handleHotkeyNext() {
-  jumpHistory(+1);
+  // If we have "future" history (after pressing left), use it
+  const lastIndex = runState.history.length - 1;
+
+  if (runState.historyIndex < lastIndex) {
+    jumpHistory(+1);
+  } else {
+    // If already at newest entry → force a fresh hop
+    hopOnce();   // does NOT break anything and does NOT interfere with the timer
+  }
 }
 
 function handleHotkeyPrev() {
