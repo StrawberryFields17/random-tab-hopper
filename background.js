@@ -34,7 +34,8 @@ let runState = {
 
   // history of hops (tab IDs) for ← / → navigation
   history: [],
-  historyIndex: -1
+  historyIndex: -1,
+  suppressNextHistory: false
 };
 
 let selectedTabIds = new Set();
@@ -114,6 +115,7 @@ async function stopRunner() {
   runState.windowId = null;
   runState.history = [];
   runState.historyIndex = -1;
+  runState.suppressNextHistory = false;
 
   // Clear only the range-based markers.
   // Manual selection markers are tracked separately (selectedTabIds)
@@ -234,9 +236,7 @@ async function hopOnce() {
     await browser.tabs.update(next.id, { active: true });
     await browser.windows.update(runState.windowId, { focused: true });
 
-    runState.history = runState.history.slice(0, runState.historyIndex + 1);
-    runState.history.push(next.id);
-    runState.historyIndex = runState.history.length - 1;
+    // IMPORTANT: history is updated only in the onActivated listener.
   } catch (e) {
     console.error("hopOnce error:", e);
   }
@@ -259,11 +259,13 @@ function jumpHistory(offset) {
   const tabId = runState.history[newIndex];
   runState.historyIndex = newIndex;
 
+  // Tell the onActivated listener not to push this activation into history again.
+  runState.suppressNextHistory = true;
+
   browser.tabs
     .update(tabId, { active: true })
     .catch(() => {});
 }
-
 
 // ---------------- LAST RUN SNAPSHOT ----------------
 
@@ -332,6 +334,7 @@ async function handleStart(msg) {
 
   runState.history = [];
   runState.historyIndex = -1;
+  runState.suppressNextHistory = false;
 
   await browser.storage.local.set({ lastParams: msg });
 
@@ -417,22 +420,36 @@ async function syncSelectedFromMarkers() {
   return { tabs };
 }
 
-// ---------------- RUNNER LOGIC ----------------
+// ---------------- RUNNER LOGIC / HOTKEYS ----------------
 
-function handleHotkeyNext() {
-  // If we have "future" history (after pressing left), use it
+async function handleHotkeyNext() {
+  if (!runState.running || runState.windowId == null) {
+    return { ok: false };
+  }
+
   const lastIndex = runState.history.length - 1;
 
-  if (runState.historyIndex < lastIndex) {
+  // If we've gone back with ←, walk forward through history first.
+  if (
+    runState.history.length > 0 &&
+    runState.historyIndex >= 0 &&
+    runState.historyIndex < lastIndex
+  ) {
     jumpHistory(+1);
-  } else {
-    // If already at newest entry → force a fresh hop
-    hopOnce();   // does NOT break anything and does NOT interfere with the timer
+    return { ok: true };
   }
+
+  // Otherwise: force a fresh hop (new random/sequential tab)
+  await hopOnce();
+  return { ok: true };
 }
 
 function handleHotkeyPrev() {
+  if (!runState.running) return { ok: false };
+  if (!runState.history.length) return { ok: false };
+
   jumpHistory(-1);
+  return { ok: true };
 }
 
 // ---------------- CLOSE LAST RUN TABS ----------------
@@ -588,14 +605,37 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
 
   if (!runState.running) return;
 
+  // If this activation comes from a history jump, don't record it again.
+  if (runState.suppressNextHistory) {
+    runState.suppressNextHistory = false;
+    return;
+  }
+
   const tabs = await browser.tabs.query({ windowId: runState.windowId });
   tabs.sort((a, b) => a.index - b.index);
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
 
+  // Trim any "future" history if we had gone backwards
   runState.history = runState.history.slice(0, runState.historyIndex + 1);
+
+  // Avoid pushing duplicate consecutive IDs
+  if (runState.history[runState.history.length - 1] === id) {
+    runState.historyIndex = runState.history.length - 1;
+    return;
+  }
+
   runState.history.push(id);
-  runState.historyIndex = runState.history.length - 1;
+
+  // Optional cap so it doesn't grow without bound (logic still uses last 10)
+  const MAX_STORED = 50;
+  if (runState.history.length > MAX_STORED) {
+    const extra = runState.history.length - MAX_STORED;
+    runState.history.splice(0, extra);
+    runState.historyIndex = runState.history.length - 1;
+  } else {
+    runState.historyIndex = runState.history.length - 1;
+  }
 });
 
 // ---------------- START SELECTION ----------------
